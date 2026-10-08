@@ -414,23 +414,13 @@ class TerminalUI:
         @bindings.add("c-pageup", eager=True)
         def page_up(event) -> None:
             del event
-            height = (
-                self.transcript_window.render_info.window_height
-                if self.transcript_window.render_info
-                else 10
-            )
-            self._scroll_back(max(1, height - 2))
+            self._scroll_back(max(1, self._viewport_height() - 2))
 
         @bindings.add("pagedown", eager=True)
         @bindings.add("c-pagedown", eager=True)
         def page_down(event) -> None:
             del event
-            height = (
-                self.transcript_window.render_info.window_height
-                if self.transcript_window.render_info
-                else 10
-            )
-            self._scroll_forward(max(1, height - 2))
+            self._scroll_forward(max(1, self._viewport_height() - 2))
 
         @bindings.add(
             "end", filter=Condition(lambda: not self._follow_tail), eager=True
@@ -494,6 +484,18 @@ class TerminalUI:
     def _transcript_width(self) -> int:
         return max(1, self._output.get_size().columns)
 
+    def _viewport_height(self) -> int:
+        """Transcript height from the layout, not a possibly stale render."""
+        rows = max(1, self._output.get_size().rows)
+        editor = self._editor_dimension().preferred
+        editor_lines = max(1, editor) if isinstance(editor, int) else 1
+        # The transcript shares the screen with divider, prompt, editor and footer.
+        return max(1, rows - (1 + 1 + editor_lines + 1))
+
+    def _max_scroll_offset(self, height: int) -> int:
+        self._transcript_text()  # Refresh the measured line count.
+        return max(0, self._line_count - height)
+
     def _rendered_entries(self) -> list[ANSI]:
         width = self._transcript_width()
         return [entry.render(width) for entry in self.entries]
@@ -521,30 +523,30 @@ class TerminalUI:
         return self._scroll_offset
 
     def _scroll_back(self, amount: int) -> None:
-        self._transcript_text()
-        info = self.transcript_window.render_info
-        height = info.window_height if info is not None else 1
-        current = self._scroll_offset
-        if self._follow_tail:
-            current = max(0, self._line_count - height)
-        elif current == 0 and info is not None:
-            current = self.transcript_window.vertical_scroll
+        height = self._viewport_height()
+        max_offset = self._max_scroll_offset(height)
+        # Follow the tail from the true bottom, and never keep an offset that
+        # a stale render measurement allowed to drift past the current bottom.
+        current = (
+            max_offset if self._follow_tail else min(self._scroll_offset, max_offset)
+        )
         self._follow_tail = False
         self._scroll_offset = max(0, current - amount)
         self._set_status("Transcript paused · End follows new output")
 
     def _scroll_forward(self, amount: int) -> None:
-        if self.transcript_window.render_info is not None:
-            height = self.transcript_window.render_info.window_height
-        else:
-            height = 10
-        max_offset = max(0, self._line_count - height)
-        self._scroll_offset = min(max_offset, self._scroll_offset + amount)
-        if self._scroll_offset >= max_offset:
+        if self._follow_tail:
+            # Already following the bottom; scrolling down stays at the tail.
+            return
+        height = self._viewport_height()
+        max_offset = self._max_scroll_offset(height)
+        new_offset = min(max_offset, self._scroll_offset + amount)
+        if new_offset >= max_offset:
             self._follow_tail = True
             self._scroll_offset = 0
             self._set_status("Following transcript")
         else:
+            self._scroll_offset = new_offset
             self._set_status("Transcript paused · End follows new output")
 
 

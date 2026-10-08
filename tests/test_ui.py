@@ -5,6 +5,7 @@ import re
 import time
 from contextlib import asynccontextmanager
 from io import StringIO
+from types import SimpleNamespace
 
 import pyte
 import pytest
@@ -376,6 +377,42 @@ async def test_follow_tail_pause_page_and_mouse_scrolling_then_end():
         )
         terminal.send("\x1b[4~")  # xterm End
         await terminal.wait_for(lambda: terminal.ui.following_tail, "End follows tail")
+
+
+@pytest.mark.asyncio
+async def test_scroll_math_uses_layout_height_instead_of_stale_render_info():
+    """Regression: PageUp mixed a fresh line count with a stale window height.
+
+    It could therefore leave the paused offset exactly at the true bottom; the
+    next wheel-down then snapped to the tail (offset 0) instead of moving down.
+    """
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript completion",
+        )
+        ui = terminal.ui
+        await terminal.wait_for(lambda: ui._line_count > 20, "measured transcript")
+        true_height = ui._viewport_height()
+        # A stale render can claim a viewport that is far shorter than the
+        # layout currently allocates; the scroll math must ignore it.
+        ui.transcript_window.render_info = SimpleNamespace(
+            window_height=1, content_height=1
+        )
+        ui._scroll_back(true_height - 2)
+        max_offset = ui._max_scroll_offset(true_height)
+        assert not ui.following_tail
+        assert ui.scroll_offset == max_offset - (true_height - 2)
+        assert ui.scroll_offset < max_offset
+
+        before = ui.scroll_offset
+        ui._scroll_forward(3)
+        assert not ui.following_tail
+        assert ui.scroll_offset > before
 
 
 @pytest.mark.asyncio
