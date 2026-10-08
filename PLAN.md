@@ -19,6 +19,11 @@ draft test now checks that Ctrl+D does not exit or edit a non-empty insert draft
 plus the normal-mode half page down. Full suite 109 passed, Ruff and diff checks
 clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
+Validation: commit f2e012f; full suite 109 passed, Ruff and diff checks clean.
+Actions https://github.com/cainiaocome/py/actions/runs/37856211760 succeeded.
+Published image ghcr.io/cainiaocome/py:latest digest
+sha256:ce9d996ae5278338475bcbce2995db1c5e6a8f86449e7c36fb98e0900a09b9db. A
+real-PTY run of that image confirmed Ctrl+D at an empty prompt exits cleanly
+(exit code 0), Ctrl+D with a draft leaves the app running and the draft
+unchanged, and Ctrl+D exits once the draft is cleared. Preserve .env, user commit
 3d8421e and home files. No system packages installed.
