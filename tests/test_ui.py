@@ -11,6 +11,7 @@ import pyte
 import pytest
 from prompt_toolkit.data_structures import Size
 from prompt_toolkit.input import create_pipe_input
+from prompt_toolkit.key_binding.vi_state import InputMode
 from prompt_toolkit.output.vt100 import Vt100_Output
 from pydantic_ai.messages import ToolCallPart
 from rich.console import Console
@@ -260,6 +261,82 @@ def entry_contains(ui: TerminalUI, needle: str) -> bool:
             if isinstance(obj, str) and needle in obj:
                 return True
     return False
+
+
+@pytest.mark.asyncio
+async def test_ctrl_u_clears_line_content_in_insert_mode():
+    chat = FakeChat()
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("hello world")
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.text == "hello world", "typed text"
+        )
+        terminal.send("\x15")  # Ctrl+U
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.text == "", "Ctrl+U clears the line"
+        )
+        assert terminal.ui.buffer.cursor_position == 0
+
+
+@pytest.mark.asyncio
+async def test_escape_enters_normal_mode_without_a_long_delay():
+    chat = FakeChat()
+    async with running_ui(chat, width=72, height=14) as terminal:
+        assert terminal.ui.app.timeoutlen is not None
+        assert terminal.ui.app.timeoutlen <= 0.1
+        assert terminal.ui.app.ttimeoutlen <= 0.1
+        terminal.send("abc")
+        await terminal.wait_for(lambda: terminal.ui.buffer.text == "abc", "typed text")
+        assert terminal.ui.app.vi_state.input_mode == InputMode.INSERT
+        start = time.monotonic()
+        terminal.send("\x1b")
+        # The old defaults (0.5s parser + 1.0s key timeout) took over a second;
+        # fail fast if Escape is buffered again waiting for a longer binding.
+        await terminal.wait_for(
+            lambda: terminal.ui.app.vi_state.input_mode == InputMode.NAVIGATION,
+            "Escape enters normal mode",
+            timeout=1.0,
+        )
+        assert time.monotonic() - start < 0.6
+
+
+@pytest.mark.asyncio
+async def test_clear_command_removes_displayed_history():
+    chat = FakeChat()
+    chat.responses["hello"] = ("Answer", "**Answer for hello**")
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("hello\r")
+        await terminal.wait_for(
+            lambda: "hello" in chat.history and terminal.ui.waiting_for_input,
+            "first response",
+        )
+        await terminal.wait_for(
+            lambda: any(
+                isinstance(obj, Markdown) and "Answer for hello" in obj.markup
+                for entry in terminal.ui.entries
+                for obj in entry.objects
+            ),
+            "answer rendered",
+        )
+        assert len(terminal.ui.entries) > 1
+
+        terminal.send("/clear\r")
+        await terminal.wait_for(
+            lambda: (
+                chat.cleared == 1
+                and entry_contains(terminal.ui, "Conversation cleared")
+            ),
+            "clear applied",
+        )
+        # Only the confirmation remains: the banner, user line and answer go.
+        assert len(terminal.ui.entries) == 1
+        assert not any(
+            isinstance(obj, Markdown) and "Answer for hello" in obj.markup
+            for entry in terminal.ui.entries
+            for obj in entry.objects
+        )
+        assert not entry_contains(terminal.ui, "You [model-a]")
+        assert terminal.ui.following_tail
 
 
 @pytest.mark.asyncio

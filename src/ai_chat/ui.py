@@ -14,7 +14,7 @@ from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
 from prompt_toolkit.cursor_shapes import ModalCursorShapeConfig
 from prompt_toolkit.enums import EditingMode
-from prompt_toolkit.filters import Condition
+from prompt_toolkit.filters import Condition, vi_insert_mode, vi_replace_mode
 from prompt_toolkit.formatted_text import ANSI, FormattedText, split_lines
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.input import Input, create_input
@@ -116,6 +116,14 @@ class TranscriptConsole(Console):
             except ValueError:
                 pass
         self.ui._active_response_entry = None
+        self.ui._changed()
+
+    def clear_transcript(self) -> None:
+        """Drop the displayed conversation after the model context is reset."""
+        self.ui.entries.clear()
+        self.ui._active_response_entry = None
+        self.ui._follow_tail = True
+        self.ui._scroll_offset = 0
         self.ui._changed()
 
 
@@ -246,6 +254,12 @@ class TerminalUI:
                 }
             ),
         )
+        # Escape is ambiguous with the start of terminal escape sequences and
+        # with Alt+Enter, so prompt_toolkit briefly buffers it. Keep the parser
+        # and key timeouts short (not the 0.5s/1.0s defaults) so a lone Escape
+        # leaves insert mode promptly while Alt+Enter is still recognized.
+        self.app.ttimeoutlen = 0.05
+        self.app.timeoutlen = 0.05
 
     @property
     def waiting_for_input(self) -> bool:
@@ -343,6 +357,7 @@ class TerminalUI:
                 self,
                 self.transcript_console,
                 response_renderer=self.render_response,
+                on_clear=self.transcript_console.clear_transcript,
             )
         except asyncio.CancelledError:
             raise
@@ -422,6 +437,15 @@ class TerminalUI:
             del event
             self._scroll_forward(max(1, self._viewport_height() - 2))
 
+        @bindings.add("c-u", filter=vi_insert_mode | vi_replace_mode, eager=True)
+        def clear_line(event) -> None:
+            # Vim half-page scrolling shadows the readline binding in full-screen
+            # apps; insert mode should discard from the cursor to line start.
+            buffer = event.current_buffer
+            start = -buffer.document.get_start_of_line_position()
+            if start > 0:
+                buffer.delete_before_cursor(count=start)
+
         @bindings.add(
             "end", filter=Condition(lambda: not self._follow_tail), eager=True
         )
@@ -432,8 +456,8 @@ class TerminalUI:
             self._scroll_offset = 0
             self._changed()
 
-        # Reuse the controller's command completion, Tab behavior, and Alt+Enter
-        # newline binding. This first binding set takes precedence for Enter.
+        # Reuse the controller's command completion, Tab behavior, and the
+        # Escape-then-Enter newline binding (Alt+Enter sends the same bytes).
         return merge_key_bindings([key_bindings(), bindings])
 
     def _append_entry(

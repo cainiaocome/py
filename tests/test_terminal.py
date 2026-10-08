@@ -93,6 +93,21 @@ def test_enter_and_alt_enter_bindings():
     buffer.insert_text.assert_called_once_with("\n")
 
 
+async def test_clear_command_invokes_on_clear_callback():
+    chat = Chat()
+    output = StringIO()
+    cleared = []
+    await run_chat(
+        chat,
+        Session("/clear", "/exit"),
+        Console(file=output),
+        on_clear=lambda: cleared.append(True),
+    )
+    assert cleared == [True]
+    assert chat.cleared == 1
+    assert "Conversation cleared" in output.getvalue()
+
+
 def test_vim_multiline_default(monkeypatch):
     from prompt_toolkit.application import create_app_session
 

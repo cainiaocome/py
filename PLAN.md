@@ -1,54 +1,37 @@
-# AI CLI Chat — pinned input and detailed tool activity
+# AI CLI Chat — input/UX fixes
 
-Previous request complete: per-turn tool/model request caps removed in 4181ddf.
-72 tests passed, Actions https://github.com/cainiaocome/py/actions/runs/37826055849
-passed; published image digest c393fcbdf6de7f386143059e91c353141c16571a189fd24dc48defd2e1dad5d7.
-Offline published probe completed 55 tool calls/56 model requests/112 messages.
+Previous request complete: pinned input, scrollable Rich transcript and detailed
+tool activity. 99 tests; validated commits 3788e9c/c4f5139, Actions
+https://github.com/cainiaocome/py/actions/runs/37831896964, published image digest
+sha256:3794768f7c20dfd0d73eb846653635fce8c9b007eaff15d81ece24f86b685534.
 
-Current goal: input always pinned at bottom, full Rich Markdown transcript
-scrollable above, tool activity shows actual search query/fetch URL. User
-explicitly requests comprehensive tests, then commit and push.
+Current goal (user request): three UX fixes in the full-screen UI:
 
-Design: new ui.py TerminalUI using prompt_toolkit full-screen Application,
-fixed bottom multiline Vim Buffer, native modal cursors, model/status/footer,
-scrollable transcript with PgUp/PgDn/mouse and follow-tail toggle. Rich entries
-render to ANSI fragments at current terminal width, with caching. During stream
-input stays editable; Enter preserves draft until current run finishes. Ctrl+C
-cancels active response or exits idle prompt. Existing terminal.run_chat command
-controller reused via optional response_renderer callback and prompt_async
-adapter. Preserve legacy output for non-TTY operation. Full-screen session
-restores terminal then prints stable complete transcript once into shell
-scrollback. No source/config mounts or new dependencies.
+1. `/clear` must also clear the displayed conversation, not only model history.
+2. Escape in insert mode took about a second to enter normal mode; it should be
+   immediate.
+3. Ctrl+U after typing left the text in place and only moved the cursor to the
+   start of the line; it should clear the line.
 
-Implementation complete: ui.py integrated for interactive stdin/stdout, legacy
-fallback retained; actual tool arguments displayed with controls removed; stable
-full transcript printed after terminal restoration. Live Markdown shows visible
-URLs (Rich hyperlinks disabled in a shallow copy to avoid OSC8 metadata garbage
-in prompt_toolkit ANSI parsing); original renderables retain shell hyperlinks.
+Root causes and fixes:
 
-Validation: final root full run passed 99 tests and Ruff/diff checks. New
-virtual-terminal tests exercise pinned input, busy drafts, PageUp/Down/mouse,
-follow-tail, resize/reflow, multiline/Vim cursor modes, model picker/cancellation,
-web opt-in/persistence/query/URL safety, interrupt/error recovery, EOF/task
-cancellation cleanup, final transcript and citation links. No new application
-dependencies.
+- `/clear` only called `chat.clear()`. `run_chat` gained an optional `on_clear`
+  callback; the UI passes `TranscriptConsole.clear_transcript`, which drops the
+  entries and resets follow-tail/scroll before printing the confirmation.
+- Prompt_toolkit defaults `Application.ttimeoutlen = 0.5s` and `timeoutlen = 1.0s`
+  to disambiguate a lone Escape from escape sequences and Alt+Enter (which sends
+  the same `ESC CR` bytes). The UI now sets both to 0.05s, so a lone Escape takes
+  ~0.1s while Alt+Enter is still recognized.
+- In full-screen Vi apps, `load_vi_page_navigation_bindings` binds `c-u` to
+  half-page scroll, shadowing the insert-mode `unix-line-discard` binding. The UI
+  now binds `c-u` in insert/replace mode to delete from the cursor to line start;
+  normal-mode half-page scrolling is unchanged.
 
-Fixed during final validation: PageUp mixed a freshly measured transcript line
-count with a possibly stale render_info.window_height, so it could leave the
-paused offset exactly at the true bottom; the next wheel-down then snapped to
-the tail instead of moving. Scroll math now derives the viewport height from
-the current layout and clamps consistently (c4f5139), with a deterministic
-regression test reproducing the stale-measurement case. Verified stable under
-30 CPU-contended runs of the previously flaky mouse-scroll test.
+Tests added: Ctrl+U clears line content; Escape reaches normal mode quickly with
+short configured timeouts; `/clear` leaves only the confirmation entry; `on_clear`
+callback invoked by `run_chat`. Full suite 103 passed, Ruff and diff checks clean.
+Alt+Enter multiline input remains covered by the existing Vim test.
 
-Delivered: commit 3788e9c, fix c4f5139; full suite 99 passed. Actions
-https://github.com/cainiaocome/py/actions/runs/37831896964 passed test and image
-jobs. Published image ghcr.io/cainiaocome/py:latest digest
-sha256:3794768f7c20dfd0d73eb846653635fce8c9b007eaff15d81ece24f86b685534 contains
-the fix. Real-PTY run of the published image rendered the pinned full-screen UI,
-restored the terminal, and printed the transcript once. Live Cloud run (model
-deepseek-v4.1-flash) enabled the web tools, displayed "Searching the web: Ollama
-web search documentation", returned the official URL, and exited cleanly.
-
-Preserve .env, user commit 3d8421e and home files. No system packages installed.
-Coverage data stored only in ignored tmp/ui-coverage.
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
+3d8421e and home files. No system packages installed.

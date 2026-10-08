@@ -47,7 +47,9 @@ only and logs an error if either required value is missing or blank. Keep
   The cursor is a beam in Insert mode, a block in Normal mode, and an underline
   in Replace mode (requires a terminal that supports cursor shape changes).
 - The input stays pinned below the conversation and expands for multiline drafts.
-- Enter sends the message; Alt+Enter adds a newline (Esc then Enter also works).
+- Enter sends the message; Alt+Enter inserts a newline. Esc leaves insert
+  mode immediately.
+- Ctrl+U clears the current input line.
 - You can draft the next message while the assistant responds. Enter preserves
   that draft until the response finishes; Ctrl+C interrupts the response.
 - PgUp/PgDn or the mouse wheel scroll the conversation without moving input.
@@ -60,7 +62,8 @@ only and logs an error if either required value is missing or blank. Keep
   by Ollama when you send your next message.
 - `/enable-web-search-and-web-fetch` enables both web tools for this session.
 - Tab completes all commands, including the web-enable command; repeated Tab cycles matches.
-- `/clear` resets model context; input history remains available within the session.
+- `/clear` resets model context and clears the displayed conversation; input
+  history remains available within the session.
 - `/exit`, Ctrl+D, or Ctrl+C at the prompt exits.
 - Ctrl+C during a response cancels it and returns to the prompt.
 

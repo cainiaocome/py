@@ -75,6 +75,7 @@ async def run_chat(
     console: Console,
     *,
     response_renderer: Callable[[Chat, str, Console], Awaitable[None]] | None = None,
+    on_clear: Callable[[], None] | None = None,
 ) -> None:
     console.print("AI Chat · Ollama Cloud · Model: " + chat.model_name, markup=False)
     console.print(
@@ -100,6 +101,8 @@ async def run_chat(
             continue
         if prompt == "/clear":
             chat.clear()
+            if on_clear is not None:
+                on_clear()
             console.print("[dim]Conversation cleared.[/dim]")
             continue
         if prompt.split(maxsplit=1)[0] == "/model":
