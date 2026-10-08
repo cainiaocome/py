@@ -63,5 +63,10 @@ Changes:
 
 Full suite 114 passed, Ruff and diff checks clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow).
+Validation: commit 1346f31; full suite 114 passed. Actions
+https://github.com/cainiaocome/py/actions/runs/37858830034 succeeded. Published
+image ghcr.io/cainiaocome/py:latest digest
+sha256:ba129a0544f1641a80bf6b56c4fbc7e6ae918e91ce8027844a9e9137945cdd92. A
+real-PTY run of that image confirmed `/start` puts the last question's first line
+at the top of the transcript, is idempotent and never exits, prints "No previous
+message to scroll to." after `/clear`, and Ctrl+C still exits cleanly (code 0).
