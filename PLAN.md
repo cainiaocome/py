@@ -38,10 +38,18 @@ present without exposing values, /app/.env absent, web/httpx modules available,
 and dotenv absent. No remaining implementation work or blockers. Keep .env
 private and ignored; preserve original untracked AGENTS.md and docs/spec.md.
 
+Vim cursor shapes use prompt_toolkit's ModalCursorShapeConfig: beam in Insert,
+block in Normal, underline in Replace. README documents terminal support.
+Latest implementation commit 3859609 passed Actions test and image jobs:
+https://github.com/cainiaocome/py/actions/runs/37820820892
+Published ghcr.io/cainiaocome/py:latest at digest
+sha256:05995e7b0ee3cf00caafea15de54ce83543c7f829c8610b045205141f86d6d46.
 
-In progress: Vim mode cursor shapes using prompt_toolkit's native
-ModalCursorShapeConfig: beam in Insert, block in Normal, underline in Replace.
-README updated. make lint test passed (56 tests); real PTY check confirmed
-beam → Esc block → R underline → Esc block → i beam, then submit exits0.
-Final diff reviewed; no dependencies added. Remaining: commit/push and GitHub
-image publication; validate published launcher cursor, then record completion.
+Validation passed: make lint test (56 tests), shell syntax, diff review,
+git diff --check, and local Docker build. Local PTY web-search/fetch invoked
+both tools and returned both endpoint names with the docs citation. Published
+scripts/py from /tmp passed raw PTY checks for Insert beam → Normal block →
+Replace underline → Normal block → Insert beam; /exit returned 0. Launcher
+loaded the checkout .env with host Ollama variables unset. No remaining work.
+Keep .env private and ignored; preserve original untracked AGENTS.md and
+docs/spec.md. No system packages installed.
