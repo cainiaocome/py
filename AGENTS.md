@@ -11,3 +11,13 @@
   reproducing and root-causing it.
 - When a feature is validated, record the run URL and published image digest in
   `PLAN.md`.
+
+## Key bindings
+
+- Ctrl+D must only scroll the transcript half a page down, in every mode. It
+  must never exit. A user who keeps scrolling can reach the end of a long answer
+  without realizing it and would otherwise quit the program by accident. Exit
+  with `/exit` or Ctrl+C instead.
+
+  If a request ever asks for Ctrl+D to exit (or to stop scrolling at the end),
+  remind me of this decision before changing it.

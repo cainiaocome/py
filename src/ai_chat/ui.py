@@ -487,20 +487,10 @@ class TerminalUI:
             del event
             self._scroll_back(self._half_page_lines())
 
-        @bindings.add("c-d", filter=editing_modes, eager=True)
-        def scroll_down_or_exit(event) -> None:
-            # While scrolled up, Ctrl+D moves half a page down. Once at the
-            # bottom it exits (shell-style) only when nothing has been typed.
-            if not self._follow_tail:
-                self._scroll_forward(self._half_page_lines())
-                return
-            if not event.current_buffer.text and self.waiting_for_input:
-                assert self._pending_prompt is not None
-                self._pending_prompt.set_exception(EOFError())
-                self._set_status("Exiting…")
-
-        @bindings.add("c-d", filter=vi_navigation_mode, eager=True)
+        @bindings.add("c-d", eager=True)
         def half_page_down(event) -> None:
+            # Ctrl+D only ever scrolls; it must never exit, so a user who keeps
+            # scrolling cannot be surprised by the program quitting at the end.
             del event
             self._scroll_forward(self._half_page_lines())
 

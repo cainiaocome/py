@@ -183,14 +183,17 @@ class VirtualTerminal:
     async def close(self) -> None:
         if self.task is None or self.task.done():
             return
-        if not self.input.closed:
-            self.send("\x04")
+        # Shut down through the application itself; never rely on a key binding.
+        if self.ui.app.is_running:
+            self.ui.app.exit()
         try:
             await asyncio.wait_for(asyncio.shield(self.task), timeout=2)
         except TimeoutError:
-            if self.ui.app.is_running:
-                self.ui.app.exit()
-            await asyncio.wait_for(asyncio.shield(self.task), timeout=2)
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
 
 
 @asynccontextmanager
@@ -367,7 +370,7 @@ async def test_ctrl_u_empty_insert_prompt_scrolls_half_page_up():
 
 
 @pytest.mark.asyncio
-async def test_ctrl_d_insert_scrolls_down_and_exits_at_empty_tail():
+async def test_ctrl_d_insert_scrolls_down_and_never_exits():
     chat = FakeChat()
     chat.responses["long"] = (long_markdown(), long_markdown())
     async with running_ui(chat, width=72, height=14) as terminal:
@@ -401,11 +404,12 @@ async def test_ctrl_d_insert_scrolls_down_and_exits_at_empty_tail():
         )
         await terminal.wait_for(lambda: terminal.ui.following_tail, "back at the tail")
 
-        # Empty prompt at the bottom: Ctrl+D exits like a shell.
+        # Ctrl+D at the bottom keeps scrolling (a no-op) instead of exiting.
         terminal.send("\x04")
-        await terminal.wait_for(
-            lambda: terminal.task.done(), "Ctrl+D exits at empty tail"
-        )
+        await asyncio.sleep(0.2)
+        assert terminal.ui.app.is_running
+        assert terminal.ui.waiting_for_input
+        assert terminal.ui.following_tail
 
 
 @pytest.mark.asyncio
@@ -972,12 +976,11 @@ async def test_model_picker_cancel_and_ctrl_c_while_model_list_is_waiting():
 
 @pytest.mark.asyncio
 @pytest.mark.asyncio
-@pytest.mark.parametrize("key", ["\x03", "\x04"], ids=["ctrl-c", "ctrl-d"])
-async def test_idle_exit_restores_terminal_and_prints_goodbye_once(key):
+async def test_idle_ctrl_c_restores_terminal_and_prints_goodbye_once():
     chat = FakeChat()
     async with running_ui(chat, width=72, height=16) as terminal:
         terminal.sync()
-        terminal.send(key)
+        terminal.send("\x03")
         await terminal.wait_for(lambda: terminal.task.done(), "clean application exit")
         raw_terminal = terminal.output_stream.getvalue()
         assert "\x1b[?1049h" in raw_terminal
