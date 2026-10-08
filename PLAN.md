@@ -38,3 +38,30 @@ Follow-up docs: README now documents the key bindings in dedicated tables
 (`## Key bindings` with editing/mode-aware/scrolling tables, plus a `## Commands`
 table). Preserve .env, user commit 3d8421e and home files. No system packages
 installed.
+
+## /start — jump back to the last question
+
+Current goal (user request): add a `/start` command that scrolls the transcript
+so the last user message sits at the top, letting the user reread the assistant's
+answer from its start.
+
+Changes:
+
+- `src/ai_chat/terminal.py`: added `/start` to `COMMANDS` and
+  `COMMAND_DESCRIPTIONS`; `run_chat` now takes `on_start` (invoked for `/start`)
+  and `on_message` (invoked only for real questions, skipping commands and their
+  echoes). Non-full-screen output reports that `/start` needs the full-screen UI.
+- `src/ai_chat/ui.py`: `_accept_input` remembers the echoed line; `on_message`
+  promotes it to `_last_user_entry`; `scroll_to_last_message` computes that
+  entry's first transcript line (accounting for `split_lines`' trailing empty
+  line) and pins it at the top, clamping to the last screenful and resuming
+  follow when the question is too close to the bottom. `clear_transcript` resets
+  both references and `/start` after `/clear` prints a short note.
+- `tests`: new terminal tests for the callbacks/non-UI message and UI tests for
+  pinning the last question, idempotent repeat, and the empty-after-`/clear` case.
+- `README.md`: added `/start` to the Commands table.
+
+Full suite 114 passed, Ruff and diff checks clean.
+
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow).

@@ -130,6 +130,8 @@ class TranscriptConsole(Console):
         """Drop the displayed conversation after the model context is reset."""
         self.ui.entries.clear()
         self.ui._active_response_entry = None
+        self.ui._last_user_entry = None
+        self.ui._last_echo_entry = None
         self.ui._follow_tail = True
         self.ui._scroll_offset = 0
         self.ui._changed()
@@ -183,6 +185,8 @@ class TerminalUI:
         self._follow_tail = True
         self._scroll_offset = 0
         self._active_response_entry: TranscriptEntry | None = None
+        self._last_user_entry: TranscriptEntry | None = None
+        self._last_echo_entry: TranscriptEntry | None = None
         self._line_count = 0
         self._text_length = 0
 
@@ -366,6 +370,8 @@ class TerminalUI:
                 self.transcript_console,
                 response_renderer=self.render_response,
                 on_clear=self.transcript_console.clear_transcript,
+                on_start=self.scroll_to_last_message,
+                on_message=self.mark_last_message,
             )
         except asyncio.CancelledError:
             raise
@@ -391,11 +397,48 @@ class TerminalUI:
         self.transcript_console.print(
             Text(_safe_literal(literal_label + value)), markup=False
         )
+        if self.entries:
+            self._last_echo_entry = self.entries[-1]
         self._follow_tail = True
         self._scroll_offset = 0
         future.set_result(value)
         self._set_status("Submitted")
         return False
+
+    def mark_last_message(self) -> None:
+        """Remember the echoed line that began the latest assistant turn."""
+        if self._last_echo_entry is not None:
+            self._last_user_entry = self._last_echo_entry
+
+    def scroll_to_last_message(self) -> None:
+        """Pin the last answered question at the top so its reply reads in full."""
+        entry = self._last_user_entry
+        if entry is None or entry not in self.entries:
+            self.transcript_console.print(
+                Text("No previous message to scroll to.", style="dim"), markup=False
+            )
+            return
+        width = self._transcript_width()
+        fragments: list[tuple[str, str]] = []
+        for candidate in self.entries:
+            if candidate is entry:
+                break
+            fragments.extend(candidate.render(width).__pt_formatted_text__())
+        # split_lines always yields a trailing empty line, and the last one is
+        # the target's own first line, so drop it to get the top line index.
+        offset = max(0, len(list(split_lines(FormattedText(fragments)))) - 1)
+        max_offset = self._max_scroll_offset(self._viewport_height())
+        if offset < max_offset:
+            self._follow_tail = False
+            self._scroll_offset = offset
+            self._set_status("At your last message · End follows new output")
+        else:
+            # The question is too close to the bottom to pin at the top; the
+            # bottom of the reply is the best view, so keep following it.
+            self._follow_tail = True
+            self._scroll_offset = 0
+            self._set_status("Following transcript")
+        self._changed()
 
     def _create_key_bindings(self) -> KeyBindings:
         bindings = KeyBindings()

@@ -18,8 +18,9 @@ from rich.markdown import Markdown
 from ai_chat.chat import Chat
 
 ENABLE_WEB_COMMAND = "/enable-web-search-and-web-fetch"
-COMMANDS = ("/clear", "/exit", "/model", ENABLE_WEB_COMMAND)
+COMMANDS = ("/start", "/clear", "/exit", "/model", ENABLE_WEB_COMMAND)
 COMMAND_DESCRIPTIONS = {
+    "/start": "Scroll to the start of the last response",
     "/clear": "Clear conversation and transcript",
     "/exit": "Exit the chat",
     "/model": "Show or switch the model",
@@ -86,10 +87,13 @@ async def run_chat(
     *,
     response_renderer: Callable[[Chat, str, Console], Awaitable[None]] | None = None,
     on_clear: Callable[[], None] | None = None,
+    on_start: Callable[[], None] | None = None,
+    on_message: Callable[[], None] | None = None,
 ) -> None:
     console.print("AI Chat · Ollama Cloud · Model: " + chat.model_name, markup=False)
     console.print(
-        "Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · /clear · /exit · /model"
+        "Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · "
+        "/start · /clear · /exit · /model"
     )
     console.print("Web tools: disabled · " + ENABLE_WEB_COMMAND, markup=False)
     while True:
@@ -115,6 +119,12 @@ async def run_chat(
                 on_clear()
             console.print("[dim]Conversation cleared.[/dim]")
             continue
+        if prompt == "/start":
+            if on_start is not None:
+                on_start()
+            else:
+                console.print("[dim]/start works in the full-screen interface.[/dim]")
+            continue
         if prompt.split(maxsplit=1)[0] == "/model":
             argument = prompt.removeprefix("/model").strip()
             try:
@@ -139,6 +149,9 @@ async def run_chat(
                 markup=False,
             )
             continue
+        # Only a real question starts a turn; commands and their echoes are skipped.
+        if on_message is not None:
+            on_message()
         console.print(f"Assistant [{chat.model_name}]", style="bold cyan", markup=False)
         # A separate task lets Ctrl+C cancel one response without exiting the UI.
         task = asyncio.create_task(

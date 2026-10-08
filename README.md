@@ -97,6 +97,7 @@ candidate and `Enter` runs it.
 
 | Command | Description |
 | --- | --- |
+| `/start` | Scroll the transcript so the last question sits at the top and its reply can be read from the start. |
 | `/clear` | Reset the model context and clear the displayed conversation. Input history remains available within the session. |
 | `/model` | List Cloud models; enter a number or name, or press Enter to cancel. |
 | `/model <name>` | Switch directly. Conversation context is retained and `.env` is unchanged. Model availability is checked by Ollama on the next message. |

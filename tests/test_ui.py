@@ -547,6 +547,53 @@ async def test_clear_command_removes_displayed_history():
 
 
 @pytest.mark.asyncio
+async def test_start_command_pins_the_last_question_at_the_top():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+        assert terminal.ui.following_tail
+
+        terminal.send("/start\r")
+        await terminal.wait_for(
+            lambda: not terminal.ui.following_tail and terminal.ui.scroll_offset > 0,
+            "/start pins the last question",
+        )
+        offset = terminal.ui.scroll_offset
+        # The question is the top row, so the reply reads from its start.
+        await terminal.wait_for(
+            lambda: terminal.text().splitlines()[0].startswith("You [model-a] > long"),
+            "/start shows the question at the top",
+        )
+
+        # Repeating it is idempotent: it targets the question, not its own echo.
+        terminal.send("/start\r")
+        await asyncio.sleep(0.2)
+        assert terminal.ui.app.is_running
+        assert not terminal.ui.following_tail
+        assert terminal.ui.scroll_offset == offset
+        assert terminal.ui.buffer.text == ""
+
+
+@pytest.mark.asyncio
+async def test_start_command_after_clear_reports_nothing_to_scroll():
+    chat = FakeChat()
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("/clear\r")
+        await terminal.wait_for(lambda: chat.cleared == 1, "clear applied")
+        terminal.send("/start\r")
+        await terminal.wait_for(
+            lambda: entry_contains(terminal.ui, "No previous message to scroll to"),
+            "/start reports nothing to scroll",
+        )
+        assert terminal.ui.app.is_running
+
+
+@pytest.mark.asyncio
 async def test_streaming_keeps_input_pinned_and_draft_survives_busy_enter():
     chat = FakeChat()
     gate = asyncio.Event()
@@ -1240,11 +1287,12 @@ async def test_command_palette_lists_and_filters_commands_live():
         await terminal.wait_for(
             lambda: terminal.ui.buffer.complete_state is not None, "command palette"
         )
-        assert len(terminal.ui.buffer.complete_state.completions) == 4
+        assert len(terminal.ui.buffer.complete_state.completions) == 5
         await terminal.wait_for(
             lambda: all(
                 command in terminal.text()
                 for command in (
+                    "/start",
                     "/clear",
                     "/exit",
                     "/model",

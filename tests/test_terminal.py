@@ -108,6 +108,32 @@ async def test_clear_command_invokes_on_clear_callback():
     assert "Conversation cleared" in output.getvalue()
 
 
+async def test_start_command_invokes_on_start_for_real_messages_only():
+    chat = Chat()
+    output = StringIO()
+    started = []
+    messages = []
+    await run_chat(
+        chat,
+        Session("/start", "hello", "/start", "/exit"),
+        Console(file=output),
+        on_start=lambda: started.append(True),
+        on_message=lambda: messages.append(True),
+    )
+    assert started == [True, True]
+    # /start itself is not a question, so it never starts an assistant turn.
+    assert messages == [True]
+    assert chat.prompts == ["hello"]
+
+
+async def test_start_command_without_full_screen_ui_is_reported():
+    chat = Chat()
+    output = StringIO()
+    await run_chat(chat, Session("/start", "/exit"), Console(file=output))
+    assert "full-screen interface" in output.getvalue()
+    assert not chat.prompts
+
+
 def test_vim_multiline_default(monkeypatch):
     from prompt_toolkit.application import create_app_session
 
@@ -169,6 +195,7 @@ def test_command_completion():
         return list(completer.get_completions(Document(text), None))
 
     assert [item.text for item in complete("/")] == [
+        "/start",
         "/clear",
         "/exit",
         "/model",
