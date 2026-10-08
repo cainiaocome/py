@@ -31,6 +31,11 @@ Tests added: palette lists all commands and descriptions, filters while typing,
 hides on no match and rebuilds after deletion, Down selects and Enter runs, Tab
 completes a prefix. Full suite 105 passed, Ruff and diff checks clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
-3d8421e and home files. No system packages installed.
+Validation: commit 995a0f3; full suite 105 passed, Ruff and diff checks clean.
+Actions https://github.com/cainiaocome/py/actions/runs/37835460727 passed test and
+image jobs. Published image ghcr.io/cainiaocome/py:latest digest
+sha256:c61a15f51af2e3e3f47b5d59ec5efe597f9263310c07a5e7a8e924cd1c9bafc1. A
+real-PTY run of that image confirmed the palette opens on `/` with descriptions,
+filters while typing, rebuilds after deletion, Tab completes a prefix and runs
+the command, and Down selects then Enter runs a candidate. Preserve .env, user
+commit 3d8421e and home files. No system packages installed.
