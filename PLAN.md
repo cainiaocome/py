@@ -17,8 +17,13 @@ runtime inspection (non-root, installed application, no uv/.env/.git), local
 Docker PTY startup and /clear + /exit. Prior live Cloud streaming/context and
 model discovery/picker tests passed. No system packages installed.
 
-Remaining: commit/push required application and distribution files, monitor
-Actions publication, pull GHCR image using existing Docker credentials and
-smoke-test scripts/py. Check anonymous GHCR access and document if package
-visibility needs user action. Original untracked AGENTS.md and docs/spec.md
+Publication complete: implementation committed/pushed as 2657dc2 on main.
+GitHub Actions test/image jobs passed:
+https://github.com/cainiaocome/py/actions/runs/37810147851
+Published ghcr.io/cainiaocome/py:latest (amd64+arm64), digest
+sha256:69eae7a913f147be9094b88a3e99aec774e7c048539838b5b57fe4be739bef8d.
+Pulls passed anonymously and with existing Docker credentials (not modified).
+Final PTY check through scripts/py passed GHCR pull, startup from /tmp with the
+checkout's private .env, live /model discovery, /clear and /exit. No remaining
+implementation work or blockers. Original untracked AGENTS.md and docs/spec.md
 remain untouched. .env is private and Git-ignored; never stage it.
