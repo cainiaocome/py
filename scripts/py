@@ -2,35 +2,53 @@
 # Run the published application; no host Python or uv needed.
 set -eu
 
-if ! command -v docker >/dev/null 2>&1; then
-    echo 'Docker is required. Install Docker and start its daemon.' >&2
-    exit 1
-fi
-
 script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 config_file=${AI_CHAT_ENV_FILE:-"$script_dir/../.env"}
 image=${AI_CHAT_IMAGE:-ghcr.io/cainiaocome/py:latest}
 
-set -- docker run --rm --pull always -it \
-    --user "$(id -u):$(id -g)" \
-    --env "TERM=${TERM:-xterm-256color}"
-
-# Mount dotenv instead of Docker's --env-file: preserve python-dotenv quoting.
+# Exported environment values take precedence over the optional shell file.
+api_key_was_set=${OLLAMA_API_KEY+x}
+model_was_set=${OLLAMA_MODEL+x}
+original_api_key=${OLLAMA_API_KEY-}
+original_model=${OLLAMA_MODEL-}
 if [ -f "$config_file" ]; then
     config_dir=$(CDPATH='' cd -- "$(dirname -- "$config_file")" && pwd)
     config_file="$config_dir/$(basename -- "$config_file")"
-    set -- "$@" --mount "type=bind,source=$config_file,target=/app/.env,readonly"
+    set -a
+    . "$config_file"
+    set +a
 elif [ -n "${AI_CHAT_ENV_FILE:-}" ]; then
-    echo "Configuration file not found: $config_file" >&2
+    echo "ERROR: Configuration file not found: $config_file" >&2
+    exit 1
+fi
+if [ "$api_key_was_set" = x ]; then
+    OLLAMA_API_KEY=$original_api_key
+fi
+if [ "$model_was_set" = x ]; then
+    OLLAMA_MODEL=$original_model
+fi
+
+missing=0
+case ${OLLAMA_API_KEY:-} in
+    *[![:space:]]*) ;;
+    *) echo 'ERROR: Missing required environment variable: OLLAMA_API_KEY' >&2; missing=1 ;;
+esac
+case ${OLLAMA_MODEL:-} in
+    *[![:space:]]*) ;;
+    *) echo 'ERROR: Missing required environment variable: OLLAMA_MODEL' >&2; missing=1 ;;
+esac
+if [ "$missing" -ne 0 ]; then
+    exit 1
+fi
+export OLLAMA_API_KEY OLLAMA_MODEL
+
+if ! command -v docker >/dev/null 2>&1; then
+    echo 'ERROR: Docker is required. Install Docker and start its daemon.' >&2
     exit 1
 fi
 
-# Pass variable names, never secret values, as command arguments.
-if [ "${OLLAMA_API_KEY+x}" = x ]; then
-    set -- "$@" --env OLLAMA_API_KEY
-fi
-if [ "${OLLAMA_MODEL+x}" = x ]; then
-    set -- "$@" --env OLLAMA_MODEL
-fi
-
-exec "$@" "$image"
+# Docker reads values from the environment, never from command arguments/files.
+exec docker run --rm --pull always -it \
+    --env "TERM=${TERM:-xterm-256color}" \
+    --env OLLAMA_API_KEY --env OLLAMA_MODEL \
+    "$image"

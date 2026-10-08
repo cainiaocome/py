@@ -18,10 +18,12 @@ cp .env.example .env
 No host Python, uv, or Python dependencies are required. The launcher pulls
 `ghcr.io/cainiaocome/py:latest` on every start and runs an interactive, temporary
 container. It reads the checkout's `.env` even when launched from another
-working directory. The file is mounted read-only; exported `OLLAMA_API_KEY` and
-`OLLAMA_MODEL` override it. The container uses your numeric user/group IDs so it
-can read a private `.env` without changing its permissions. Docker must be able
-to access the file on the host (including file sharing on Docker Desktop).
+working directory. The launcher sources this optional file as trusted POSIX
+shell configuration (`KEY=value`, quotes, comments and `export` are supported).
+Exported `OLLAMA_API_KEY` and `OLLAMA_MODEL` override file values. Both must be
+nonblank after loading; otherwise the launcher logs an error and exits before
+starting Docker. You can also skip the file and export both variables directly.
+Only environment variables are passed to the container; `.env` is never mounted.
 
 Optional overrides:
 
@@ -32,8 +34,9 @@ AI_CHAT_IMAGE=ghcr.io/cainiaocome/py:v1.0.0 ./scripts/py
 
 Get a key from https://ollama.com/settings/keys. `OLLAMA_MODEL` is the Cloud
 model name (default example: `gpt-oss:20b`). Requests use
-`https://ollama.com/v1`. Environment variables override `.env`; the file is
-loaded from the current directory. Keep `.env` private; it is ignored by Git.
+`https://ollama.com/v1`. The Python application reads environment variables
+only and logs an error if either required value is missing or blank. Keep
+`.env` private; it is ignored by Git and loaded only by the launcher.
 
 - Vim editing is enabled by default; press `i` to enter insert mode, Esc for normal mode.
 - Enter sends the message; Alt+Enter adds a newline (Esc then Enter also works).
@@ -73,6 +76,8 @@ For local Python development, install [uv](https://docs.astral.sh/uv/):
 
 ```sh
 uv sync --locked
+export OLLAMA_API_KEY=your-ollama-cloud-api-key
+export OLLAMA_MODEL=gpt-oss:20b
 uv run ai-chat
 ```
 
@@ -93,6 +98,6 @@ make image
 The launcher always pulls, so a local-only image is best tested directly:
 
 ```sh
-docker run --rm -it --user "$(id -u):$(id -g)" \
-  --mount "type=bind,source=$(pwd)/.env,target=/app/.env,readonly" ai-chat:local
+# Export OLLAMA_API_KEY and OLLAMA_MODEL first.
+docker run --rm -it -e OLLAMA_API_KEY -e OLLAMA_MODEL ai-chat:local
 ```

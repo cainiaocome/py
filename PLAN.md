@@ -1,29 +1,25 @@
 # AI CLI Chat
 
-Implemented: Python/uv CLI with Pydantic AI and Ollama Cloud, streamed Rich
-Markdown, Vim/multiline input, session history, /clear, /exit, /model picker and
-direct switching, active model display, command Tab completion and error recovery.
+Implemented: Ollama Cloud terminal chat, streaming Markdown, session history,
+Vim/multiline input, active model, /model selection and command Tab completion.
+Distribution: Dockerfile, Docker-only scripts/py, GitHub Actions publishing
+linux/amd64+linux/arm64 images to ghcr.io/cainiaocome/py:latest.
 
-Container distribution implemented: multi-stage Dockerfile (Python 3.13,
-locked production dependencies, non-root runtime without uv), allowlisted
-.dockerignore, executable scripts/py, and GitHub Actions publishing
-linux/amd64 + linux/arm64 to ghcr.io/cainiaocome/py. main publishes latest;
-v* tags publish versions; PRs test/build without publishing. Launcher always
-pulls and mounts .env read-only, preserving dotenv quoting and exported env
-precedence; no credentials in the image or command arguments.
+In progress: environment-only Python configuration. Python no longer loads
+.env and logs missing/blank configuration via Loguru. Removed python-dotenv.
+Launcher sources optional trusted shell-format .env, preserves exported
+variable precedence, validates key and model before Docker, and passes values
+via --env names only; no .env mount. Runtime uses default non-root image user.
+README and configuration/launcher tests updated.
 
-Validation: make lint test (14 tests), sh -n scripts/py, local Docker build,
-runtime inspection (non-root, installed application, no uv/.env/.git), local
-Docker PTY startup and /clear + /exit. Prior live Cloud streaming/context and
-model discovery/picker tests passed. No system packages installed.
-
-Publication complete: implementation committed/pushed as 2657dc2 on main.
-GitHub Actions test/image jobs passed:
-https://github.com/cainiaocome/py/actions/runs/37810147851
-Published ghcr.io/cainiaocome/py:latest (amd64+arm64), digest
-sha256:69eae7a913f147be9094b88a3e99aec774e7c048539838b5b57fe4be739bef8d.
-Pulls passed anonymously and with existing Docker credentials (not modified).
-Final PTY check through scripts/py passed GHCR pull, startup from /tmp with the
-checkout's private .env, live /model discovery, /clear and /exit. No remaining
-implementation work or blockers. Original untracked AGENTS.md and docs/spec.md
-remain untouched. .env is private and Git-ignored; never stage it.
+Validation passed: make lint test (25 tests), sh -n scripts/py, final source
+and diff review, git diff --check. Lockfile change only removes python-dotenv.
+Local Docker build succeeded. PTY startup from the local image using exported
+host variables (sourced from private .env, with no container mount) displayed
+the configured model and exited cleanly with /exit. A no-config container had
+no /app/.env, reported both required variables missing, and exited 1.
+Remaining: commit/push the eight intended files, watch GitHub publication, and
+smoke-test the updated published launcher from /tmp, including its env-only
+configuration and no-mount behavior.
+Keep original untracked AGENTS.md and docs/spec.md untouched. .env is ignored
+and private; never stage it. No system packages installed.
