@@ -5,6 +5,7 @@ description = "Minimal streaming terminal chat with Ollama Cloud"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+  "httpx>=0.28,<1",
   "pydantic-ai-slim[openai]>=1.0,<2",
   "prompt-toolkit>=3.0,<4",
   "rich>=14,<15",

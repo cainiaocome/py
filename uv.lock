@@ -7,6 +7,7 @@ name = "ai-chat"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "httpx" },
     { name = "loguru" },
     { name = "prompt-toolkit" },
     { name = "pydantic-ai-slim", extra = ["openai"] },
@@ -22,6 +23,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", specifier = ">=0.28,<1" },
     { name = "loguru", specifier = ">=0.7,<1" },
     { name = "prompt-toolkit", specifier = ">=3.0,<4" },
     { name = "pydantic-ai-slim", extras = ["openai"], specifier = ">=1.0,<2" },

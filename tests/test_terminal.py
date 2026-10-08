@@ -40,12 +40,19 @@ class Chat:
     def clear(self):
         self.cleared += 1
 
-    async def stream(self, prompt):
+    async def stream(self, prompt, *, on_activity=None):
         self.prompts.append(prompt)
         if prompt == "fail":
             raise RuntimeError("private detail")
         if prompt == "cancel":
             raise asyncio.CancelledError()
+        if prompt == "web" and on_activity:
+            on_activity("Searching the web…")
+            on_activity("Fetching page…")
+        if prompt == "limit":
+            from pydantic_ai.exceptions import UsageLimitExceeded
+
+            raise UsageLimitExceeded("limit")
         yield "**hello**"
 
 
@@ -149,3 +156,15 @@ def test_command_completion():
     assert complete("/mo")[0].start_position == -3
     assert complete("hello") == []
     assert complete("/model other") == []
+
+
+async def test_tool_activity_and_limit_recovery():
+    output = StringIO()
+    chat = Chat()
+    await run_chat(
+        chat, Session("web", "limit", "hello", "/exit"), Console(file=output)
+    )
+    assert "Searching the web" in output.getvalue()
+    assert "Fetching page" in output.getvalue()
+    assert "reached its tool or request limit" in output.getvalue()
+    assert chat.prompts == ["web", "limit", "hello"]

@@ -66,3 +66,204 @@ def test_model_switch_preserves_context_and_provider():
     with pytest.raises(ValueError):
         chat.switch_model("bad model")
     assert chat.model_name == "new-model"
+
+
+async def test_mixed_text_search_fetch_and_followup_history():
+    import httpx
+    from pydantic_ai.messages import ToolCallPart, ToolReturnPart
+    from pydantic_ai.models.function import DeltaToolCall
+
+    from ai_chat.web import WebTools
+
+    calls = []
+    requests = []
+
+    def respond(request):
+        calls.append(request.url.path)
+        if request.url.path.endswith("web_search"):
+            return httpx.Response(
+                200,
+                json={
+                    "results": [
+                        {
+                            "title": "Example",
+                            "url": "https://example.com/",
+                            "content": "Snippet",
+                        }
+                    ]
+                },
+            )
+        return httpx.Response(
+            200, json={"title": "Example", "content": "Page content", "links": []}
+        )
+
+    web = WebTools("test-key", transport=httpx.MockTransport(respond))
+
+    async def stream(messages, info):
+        requests.append(list(messages))
+        assert {tool.name for tool in info.function_tools} == {
+            "web_search",
+            "web_fetch",
+        }
+        if len(requests) == 1:
+            yield "Let me check."
+            yield {
+                0: DeltaToolCall(
+                    name="web_search",
+                    json_args='{"query":"example"}',
+                    tool_call_id="search-1",
+                )
+            }
+        elif len(requests) == 2:
+            yield {
+                0: DeltaToolCall(
+                    name="web_fetch",
+                    json_args='{"url":"https://example.com/"}',
+                    tool_call_id="fetch-1",
+                )
+            }
+        else:
+            yield "Answer with [source](https://example.com/)."
+
+    chat = Chat(
+        Agent(
+            FunctionModel(stream_function=stream), tools=[web.web_search, web.web_fetch]
+        )
+    )
+    activity = []
+    chunks = [
+        text
+        async for text in chat.stream("Research example", on_activity=activity.append)
+    ]
+    assert chunks[-1] == "Let me check.\n\nAnswer with [source](https://example.com/)."
+    assert calls == ["/api/web_search", "/api/web_fetch"]
+    assert activity == ["Searching the web…", "Fetching page…"]
+    assert len(chat.history) == 6
+    parts = [part for message in chat.history for part in message.parts]
+    assert sum(isinstance(part, ToolCallPart) for part in parts) == 2
+    assert sum(isinstance(part, ToolReturnPart) for part in parts) == 2
+    _ = [text async for text in chat.stream("What did you find?")]
+    assert len(requests[-1]) == 7
+    chat.clear()
+    assert chat.history == []
+
+
+async def test_tool_loop_is_bounded_without_committing_history():
+    from pydantic_ai.exceptions import UsageLimitExceeded
+    from pydantic_ai.models.function import DeltaToolCall
+
+    calls = []
+
+    async def web_search(query: str) -> str:
+        calls.append(query)
+        return "Found a result"
+
+    async def stream(messages, info):
+        yield {
+            0: DeltaToolCall(
+                name="web_search",
+                json_args='{"query":"again"}',
+                tool_call_id=f"call-{len(calls)}",
+            )
+        }
+
+    chat = Chat(Agent(FunctionModel(stream_function=stream), tools=[web_search]))
+    with pytest.raises(UsageLimitExceeded):
+        _ = [text async for text in chat.stream("Search forever")]
+    assert len(calls) == 10
+    assert chat.history == []
+
+
+async def test_cancelled_tool_preserves_history():
+    import asyncio
+
+    from pydantic_ai.models.function import DeltaToolCall
+
+    started = asyncio.Event()
+
+    async def web_fetch(url: str) -> str:
+        started.set()
+        await asyncio.Event().wait()
+        return "unreachable"
+
+    async def stream(messages, info):
+        yield {
+            0: DeltaToolCall(
+                name="web_fetch",
+                json_args='{"url":"https://example.com/"}',
+                tool_call_id="fetch-1",
+            )
+        }
+
+    chat = Chat(Agent(FunctionModel(stream_function=stream), tools=[web_fetch]))
+    previous = [
+        ModelRequest(parts=[UserPromptPart(content="previous")]),
+        ModelResponse(parts=[TextPart(content="answer")]),
+    ]
+    chat.history = list(previous)
+
+    async def consume():
+        return [text async for text in chat.stream("Fetch")]
+
+    task = asyncio.create_task(consume())
+    await asyncio.wait_for(started.wait(), timeout=5)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert chat.history == previous
+
+
+async def test_model_switch_keeps_web_tools():
+    from ai_chat.chat import create_chat
+
+    chat = create_chat("test-key", "old-model")
+    web = chat.web
+    chat.switch_model("new-model")
+    assert chat.web is web
+
+    async def stream(messages, info):
+        assert {tool.name for tool in info.function_tools} == {
+            "web_search",
+            "web_fetch",
+        }
+        yield "Web tools are available."
+
+    with chat.agent.override(model=FunctionModel(stream_function=stream)):
+        chunks = [text async for text in chat.stream("Check available tools")]
+    assert chunks[-1] == "Web tools are available."
+
+
+async def test_web_error_is_available_to_model_for_recovery():
+    import httpx
+    from pydantic_ai.messages import ToolReturnPart
+    from pydantic_ai.models.function import DeltaToolCall
+
+    from ai_chat.web import WebTools
+
+    web = WebTools(
+        "secret-key", transport=httpx.MockTransport(lambda request: httpx.Response(429))
+    )
+    count = 0
+
+    async def stream(messages, info):
+        nonlocal count
+        count += 1
+        if count == 1:
+            yield {
+                0: DeltaToolCall(
+                    name="web_search",
+                    json_args='{"query":"example"}',
+                    tool_call_id="search-1",
+                )
+            }
+        else:
+            returned = [
+                p for m in messages for p in m.parts if isinstance(p, ToolReturnPart)
+            ]
+            assert "rate limited" in returned[-1].content["error"]
+            yield "Web search is rate limited. Please try later."
+
+    chat = Chat(Agent(FunctionModel(stream_function=stream), tools=[web.web_search]))
+    chunks = [text async for text in chat.stream("Search")]
+    assert "rate limited" in chunks[-1]
+    assert len(chat.history) == 4

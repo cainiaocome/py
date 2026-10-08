@@ -55,6 +55,34 @@ conversation history. Messages and input history live only in memory and are
 not saved between sessions. Request errors show a short message without logging
 message content or credentials.
 
+## Web search and page fetching
+
+The assistant can search and read web pages using Ollama Cloud's
+[web search and fetch APIs](https://docs.ollama.com/capabilities/web-search).
+Both tools use your existing `OLLAMA_API_KEY`; no additional configuration or
+local browser is needed. Use a Cloud model that supports function/tool calling.
+The tools remain available when switching models with `/model`.
+
+Ask naturally, for example:
+
+- “Search for the latest Ollama release and cite the official announcement.”
+- “Read https://docs.ollama.com/capabilities/web-search and summarize its APIs.”
+
+The terminal shows “Searching the web…” and “Fetching page…” during tool
+execution. The model is instructed to link sources in its Markdown answers and
+to report web errors honestly. Tool execution and returned sources remain in
+session history; `/clear` resets them together with the conversation.
+
+Each web request has a 30-second deadline. Search defaults to five results
+(maximum ten), and each search/fetch result is bounded to 20,000 content
+characters with a truncation flag. Page results also include at most 20 links.
+A turn allows at most ten tool calls and fifteen model requests. Reaching a
+limit stops the turn with a message; failed or interrupted turns do not update
+history. Authentication errors, rate limits, timeouts, unavailable pages, and
+malformed responses are returned to the model as short error messages.
+Credentials and page contents are not logged. Python still reads configuration
+only from environment variables; the launcher alone loads the optional `.env`.
+
 ## Container publishing
 
 `.github/workflows/image.yml` runs tests and lint, then builds Linux amd64 and
@@ -86,7 +114,7 @@ make test
 make lint
 ```
 
-`make help` lists commands. Tests use Pydantic AI's test models and do not need a
+`make help` lists commands. Tests use Pydantic AI's test models and mocked HTTP responses; they do not need a
 Cloud API key. `uv.lock` pins the resolved dependencies for reproducible installs.
 
 Build and try the container locally:
