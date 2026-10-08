@@ -471,9 +471,13 @@ class TerminalUI:
         editing_modes = vi_insert_mode | vi_insert_multiple_mode | vi_replace_mode
 
         @bindings.add("c-u", filter=editing_modes, eager=True)
-        def clear_line(event) -> None:
-            # Insert-mode Ctrl+U discards from the cursor to the line start.
+        def clear_line_or_scroll_up(event) -> None:
+            # With nothing typed, Ctrl+U scrolls half a page up so the user can
+            # read back; otherwise it discards from the cursor to the line start.
             buffer = event.current_buffer
+            if not buffer.text:
+                self._scroll_back(self._half_page_lines())
+                return
             start = -buffer.document.get_start_of_line_position()
             if start > 0:
                 buffer.delete_before_cursor(count=start)
@@ -484,9 +488,12 @@ class TerminalUI:
             self._scroll_back(self._half_page_lines())
 
         @bindings.add("c-d", filter=editing_modes, eager=True)
-        def exit_on_empty(event) -> None:
-            # Shell-style Ctrl+D: exit at an empty prompt, otherwise do nothing
-            # so it cannot delete or unindent the draft.
+        def scroll_down_or_exit(event) -> None:
+            # While scrolled up, Ctrl+D moves half a page down. Once at the
+            # bottom it exits (shell-style) only when nothing has been typed.
+            if not self._follow_tail:
+                self._scroll_forward(self._half_page_lines())
+                return
             if not event.current_buffer.text and self.waiting_for_input:
                 assert self._pending_prompt is not None
                 self._pending_prompt.set_exception(EOFError())

@@ -347,6 +347,68 @@ async def test_ctrl_u_half_page_up_in_normal_mode():
 
 
 @pytest.mark.asyncio
+async def test_ctrl_u_empty_insert_prompt_scrolls_half_page_up():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+        # Nothing typed and following the tail: Ctrl+U reads back a half page.
+        assert terminal.ui.buffer.text == ""
+        assert terminal.ui.following_tail
+        terminal.send("\x15")
+        await terminal.wait_for(
+            lambda: not terminal.ui.following_tail and terminal.ui.scroll_offset > 0,
+            "empty insert Ctrl+U half page up",
+        )
+
+
+@pytest.mark.asyncio
+async def test_ctrl_d_insert_scrolls_down_and_exits_at_empty_tail():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+
+        # A draft at the bottom is preserved: Ctrl+D must not exit or edit.
+        terminal.send("draft")
+        await terminal.wait_for(lambda: terminal.ui.buffer.text == "draft", "draft")
+        terminal.send("\x04")
+        await asyncio.sleep(0.2)
+        assert terminal.ui.app.is_running
+        assert terminal.ui.buffer.text == "draft"
+        terminal.send("\x15")
+        await terminal.wait_for(lambda: terminal.ui.buffer.text == "", "cleared")
+
+        # Empty prompt, scrolled up: Ctrl+D moves half a page down to the tail.
+        terminal.send("\x15")
+        await terminal.wait_for(
+            lambda: not terminal.ui.following_tail and terminal.ui.scroll_offset > 0,
+            "scrolled up",
+        )
+        raised = terminal.ui.scroll_offset
+        terminal.send("\x04")
+        await terminal.wait_for(
+            lambda: terminal.ui.following_tail or terminal.ui.scroll_offset > raised,
+            "insert Ctrl+D scrolls half page down",
+        )
+        await terminal.wait_for(lambda: terminal.ui.following_tail, "back at the tail")
+
+        # Empty prompt at the bottom: Ctrl+D exits like a shell.
+        terminal.send("\x04")
+        await terminal.wait_for(
+            lambda: terminal.task.done(), "Ctrl+D exits at empty tail"
+        )
+
+
+@pytest.mark.asyncio
 async def test_ctrl_d_insert_draft_noop_and_normal_half_page_down():
     chat = FakeChat()
     chat.responses["long"] = (long_markdown(), long_markdown())
