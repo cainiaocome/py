@@ -26,15 +26,29 @@ full transcript printed after terminal restoration. Live Markdown shows visible
 URLs (Rich hyperlinks disabled in a shallow copy to avoid OSC8 metadata garbage
 in prompt_toolkit ANSI parsing); original renderables retain shell hyperlinks.
 
-Validation: final root full run passed 98 tests and Ruff/diff checks; coverage 96%
-total statements, 95% ui.py, 100% web.py. New virtual-terminal tests exercise pinned
-input, busy drafts, PageUp/Down/mouse, follow-tail, resize/reflow, multiline/Vim
-cursor modes, model picker/cancellation, web opt-in/persistence/query/URL safety,
-interrupt/error recovery, EOF/task cancellation cleanup, final transcript and
-citation links. Coverage-guided no-output failure recovery, mouse down, and literal-paste
-cases now pass as well. No new application dependencies.
+Validation: final root full run passed 99 tests and Ruff/diff checks. New
+virtual-terminal tests exercise pinned input, busy drafts, PageUp/Down/mouse,
+follow-tail, resize/reflow, multiline/Vim cursor modes, model picker/cancellation,
+web opt-in/persistence/query/URL safety, interrupt/error recovery, EOF/task
+cancellation cleanup, final transcript and citation links. No new application
+dependencies.
 
-Remaining: local Docker/real PTY checks, commit/push, Actions and published
-image checks. Production source is frozen after the final hyperlink-rendering
-fix. Preserve .env, user commit 3d8421e and home files. No system packages
-installed. Coverage data stored only in ignored tmp/ui-coverage.
+Fixed during final validation: PageUp mixed a freshly measured transcript line
+count with a possibly stale render_info.window_height, so it could leave the
+paused offset exactly at the true bottom; the next wheel-down then snapped to
+the tail instead of moving. Scroll math now derives the viewport height from
+the current layout and clamps consistently (c4f5139), with a deterministic
+regression test reproducing the stale-measurement case. Verified stable under
+30 CPU-contended runs of the previously flaky mouse-scroll test.
+
+Delivered: commit 3788e9c, fix c4f5139; full suite 99 passed. Actions
+https://github.com/cainiaocome/py/actions/runs/37831896964 passed test and image
+jobs. Published image ghcr.io/cainiaocome/py:latest digest
+sha256:3794768f7c20dfd0d73eb846653635fce8c9b007eaff15d81ece24f86b685534 contains
+the fix. Real-PTY run of the published image rendered the pinned full-screen UI,
+restored the terminal, and printed the transcript once. Live Cloud run (model
+deepseek-v4.1-flash) enabled the web tools, displayed "Searching the web: Ollama
+web search documentation", returned the official URL, and exited cleanly.
+
+Preserve .env, user commit 3d8421e and home files. No system packages installed.
+Coverage data stored only in ignored tmp/ui-coverage.
