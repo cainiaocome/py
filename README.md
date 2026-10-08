@@ -17,15 +17,20 @@ cp .env.example .env
 
 No host Python, uv, or Python dependencies are required. The launcher pulls
 `ghcr.io/cainiaocome/py:latest` on every start and runs an interactive, temporary
-container. It reads the checkout's `.env` even when launched from another
-working directory. The launcher sources this optional file as trusted POSIX
-shell configuration (`KEY=value`, quotes, comments and `export` are supported).
-Exported `OLLAMA_API_KEY` and `OLLAMA_MODEL` override file values. Both must be
-nonblank after loading; otherwise the launcher logs an error and exits before
-starting Docker. You can also skip the file and export both variables directly.
+container. It checks exported `OLLAMA_API_KEY` and `OLLAMA_MODEL` first. If
+settings are missing or blank, it searches for `.env` in this order:
+
+1. The current working directory.
+2. Your home directory (`$HOME/.env`).
+
+Loading stops as soon as both settings are nonblank. Earlier nonblank values
+win; later files fill only missing settings. Files use trusted POSIX shell
+syntax (`KEY=value`, quotes, comments and `export` are supported). If settings
+remain missing, the launcher logs an error and exits before starting Docker.
 Only environment variables are passed to the container; `.env` is never mounted.
 
-Optional overrides:
+Optional overrides (`AI_CHAT_ENV_FILE` selects a single file instead of the
+normal search when settings are incomplete):
 
 ```sh
 AI_CHAT_ENV_FILE=/path/to/chat.env ./scripts/py
@@ -47,23 +52,33 @@ only and logs an error if either required value is missing or blank. Keep
 - `/model <name>` switches directly. Switching retains conversation context and
   applies only to this session; `.env` is unchanged. Model availability is checked
   by Ollama when you send your next message.
-- Tab completes `/clear`, `/exit`, and `/model`; repeated Tab cycles matches.
+- `/enable-web-search-and-web-fetch` enables both web tools for this session.
+- Tab completes all commands, including the web-enable command; repeated Tab cycles matches.
 - `/clear` resets model context; input history remains available within the session.
 - `/exit`, Ctrl+D, or Ctrl+C at the prompt exits.
 - Ctrl+C during a response cancels it and returns to the prompt.
 
-Responses stream as Markdown. Failed or interrupted responses are not added to
-conversation history. Messages and input history live only in memory and are
+Responses stream as a Markdown preview of up to twelve lines, bounded to the
+terminal height. When streaming ends, the complete formatted answer is printed
+once into scrollback. Interrupted responses retain their partial text on screen.
+Failed or interrupted responses are not added to conversation history. Messages and input history live only in memory and are
 not saved between sessions. Request errors show a short message without logging
 message content or credentials.
 
 ## Web search and page fetching
 
-The assistant can search and read web pages using Ollama Cloud's
+Web tools are disabled when a session starts. Enable them with:
+
+```text
+/enable-web-search-and-web-fetch
+```
+
+The assistant can then search and read pages using Ollama Cloud's
 [web search and fetch APIs](https://docs.ollama.com/capabilities/web-search).
 Both tools use your existing `OLLAMA_API_KEY`; no additional configuration or
 local browser is needed. Use a Cloud model that supports function/tool calling.
-The tools remain available when switching models with `/model`.
+Enabling preserves conversation context and survives `/model` and `/clear`.
+Each new session starts with the tools disabled again.
 
 Ask naturally, for example:
 
@@ -116,8 +131,9 @@ make test
 make lint
 ```
 
-`make help` lists commands. Tests use Pydantic AI's test models and mocked HTTP responses; they do not need a
-Cloud API key. `uv.lock` pins the resolved dependencies for reproducible installs.
+`make help` lists commands. Tests use Pydantic AI's test models, mocked HTTP
+responses, and a terminal emulator for Markdown scrollback regression checks;
+they do not need a Cloud API key. `uv.lock` pins the resolved dependencies for reproducible installs.
 
 Build and try the container locally:
 

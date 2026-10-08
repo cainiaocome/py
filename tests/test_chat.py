@@ -218,6 +218,7 @@ async def test_model_switch_keeps_web_tools():
 
     chat = create_chat("test-key", "old-model")
     web = chat.web
+    chat.enable_web()
     chat.switch_model("new-model")
     assert chat.web is web
 
@@ -267,3 +268,37 @@ async def test_web_error_is_available_to_model_for_recovery():
     chunks = [text async for text in chat.stream("Search")]
     assert "rate limited" in chunks[-1]
     assert len(chat.history) == 4
+
+
+async def test_web_tools_are_opt_in_and_enable_preserves_context():
+    from ai_chat.chat import create_chat
+
+    chat = create_chat("test-key", "test-model")
+    chat.switch_model("second-model")
+
+    async def offline(messages, info):
+        assert info.function_tools == []
+        yield "Offline reply."
+
+    with chat.agent.override(model=FunctionModel(stream_function=offline)):
+        _ = [text async for text in chat.stream("hello")]
+    previous = list(chat.history)
+    assert not chat.web_enabled
+    assert chat.enable_web() is True
+    assert chat.history == previous
+    assert chat.enable_web() is False
+    assert chat.web_enabled
+    chat.clear()
+    assert chat.web_enabled
+
+    async def enabled(messages, info):
+        assert {tool.name for tool in info.function_tools} == {
+            "web_search",
+            "web_fetch",
+        }
+        yield "Web enabled."
+
+    with chat.agent.override(model=FunctionModel(stream_function=enabled)):
+        _ = [text async for text in chat.stream("hello again")]
+    fresh = create_chat("test-key", "test-model")
+    assert not fresh.web_enabled

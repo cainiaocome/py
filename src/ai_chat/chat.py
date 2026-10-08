@@ -28,11 +28,19 @@ If a web tool fails, explain the limitation and use available evidence honestly.
 """
 
 
-def create_agent(model: str, provider: OpenAIProvider, web: WebTools) -> Agent:
+def create_agent(
+    model: str, provider: OpenAIProvider, web: WebTools, *, web_enabled: bool = False
+) -> Agent:
     return Agent(
         OpenAIChatModel(model, provider=provider),
-        instructions=INSTRUCTIONS,
-        tools=[web.web_search, web.web_fetch],
+        instructions=INSTRUCTIONS
+        if web_enabled
+        else (
+            "You are a helpful assistant. Web access is disabled in this session. "
+            "If browsing is needed, ask the user to run "
+            "/enable-web-search-and-web-fetch. Do not claim to have browsed."
+        ),
+        tools=[web.web_search, web.web_fetch] if web_enabled else [],
     )
 
 
@@ -46,6 +54,7 @@ class Chat:
         self.agent = agent
         self.provider = provider
         self.web = web
+        self.web_enabled = False
         self.history: list[ModelMessage] = []
 
     @property
@@ -64,7 +73,21 @@ class Chat:
         model = model.strip()
         if not model or any(char.isspace() for char in model):
             raise ValueError("Enter a model name without whitespace")
-        self.agent = create_agent(model, self.provider, self.web)
+        self.agent = create_agent(
+            model, self.provider, self.web, web_enabled=self.web_enabled
+        )
+
+    def enable_web(self) -> bool:
+        """Enable both tools for this session without resetting its context."""
+        if self.web_enabled:
+            return False
+        if self.provider is None or self.web is None:
+            raise ValueError("Web tools require an Ollama Cloud provider")
+        self.agent = create_agent(
+            self.model_name, self.provider, self.web, web_enabled=True
+        )
+        self.web_enabled = True
+        return True
 
     def clear(self) -> None:
         self.history.clear()

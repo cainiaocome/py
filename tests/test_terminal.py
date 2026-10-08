@@ -28,6 +28,7 @@ class Chat:
         self.model_name = "old-model"
         self.prompts = []
         self.cleared = 0
+        self.web_enabled = False
 
     async def list_models(self):
         return ["old-model", "new-model"]
@@ -36,6 +37,11 @@ class Chat:
         if " " in model:
             raise ValueError("bad name")
         self.model_name = model
+
+    def enable_web(self):
+        changed = not self.web_enabled
+        self.web_enabled = True
+        return changed
 
     def clear(self):
         self.cleared += 1
@@ -151,7 +157,15 @@ def test_command_completion():
     def complete(text):
         return list(completer.get_completions(Document(text), None))
 
-    assert [item.text for item in complete("/")] == ["/clear", "/exit", "/model"]
+    assert [item.text for item in complete("/")] == [
+        "/clear",
+        "/exit",
+        "/model",
+        "/enable-web-search-and-web-fetch",
+    ]
+    assert [item.text for item in complete("/en")] == [
+        "/enable-web-search-and-web-fetch"
+    ]
     assert [item.text for item in complete("/mo")] == ["/model"]
     assert complete("/mo")[0].start_position == -3
     assert complete("hello") == []
@@ -168,3 +182,23 @@ async def test_tool_activity_and_limit_recovery():
     assert "Fetching page" in output.getvalue()
     assert "reached its tool or request limit" in output.getvalue()
     assert chat.prompts == ["web", "limit", "hello"]
+
+
+async def test_enable_web_command_is_local_and_idempotent():
+    output = StringIO()
+    chat = Chat()
+    await run_chat(
+        chat,
+        Session(
+            "/enable-web-search-and-web-fetch",
+            "/enable-web-search-and-web-fetch",
+            "/clear",
+            "/exit",
+        ),
+        Console(file=output),
+    )
+    assert chat.web_enabled
+    assert not chat.prompts
+    assert chat.cleared == 1
+    assert "enabled for this session" in output.getvalue()
+    assert "already enabled" in output.getvalue()

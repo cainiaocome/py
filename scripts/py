@@ -2,41 +2,82 @@
 # Run the published application; no host Python or uv needed.
 set -eu
 
-script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
-config_file=${AI_CHAT_ENV_FILE:-"$script_dir/../.env"}
 image=${AI_CHAT_IMAGE:-ghcr.io/cainiaocome/py:latest}
+working_directory=$PWD
+home_directory=${HOME:-}
 
-# Exported environment values take precedence over the optional shell file.
-api_key_was_set=${OLLAMA_API_KEY+x}
-model_was_set=${OLLAMA_MODEL+x}
-original_api_key=${OLLAMA_API_KEY-}
-original_model=${OLLAMA_MODEL-}
-if [ -f "$config_file" ]; then
-    config_dir=$(CDPATH='' cd -- "$(dirname -- "$config_file")" && pwd)
-    config_file="$config_dir/$(basename -- "$config_file")"
+has_nonblank() {
+    case ${1-} in
+        *[![:space:]]*) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+configuration_complete() {
+    has_nonblank "${OLLAMA_API_KEY-}" && has_nonblank "${OLLAMA_MODEL-}"
+}
+
+load_config_file() {
+    config_file=$1
+    case $config_file in
+        /*) ;;
+        *) config_file=$working_directory/$config_file ;;
+    esac
+    [ -f "$config_file" ] || return 0
+
+    previous_api_key=${OLLAMA_API_KEY-}
+    previous_model=${OLLAMA_MODEL-}
+    previous_api_key_valid=0
+    previous_model_valid=0
+    if has_nonblank "$previous_api_key"; then
+        previous_api_key_valid=1
+    fi
+    if has_nonblank "$previous_model"; then
+        previous_model_valid=1
+    fi
+
+    # Configuration files use trusted POSIX shell syntax and may export values.
     set -a
     . "$config_file"
     set +a
-elif [ -n "${AI_CHAT_ENV_FILE:-}" ]; then
-    echo "ERROR: Configuration file not found: $config_file" >&2
-    exit 1
-fi
-if [ "$api_key_was_set" = x ]; then
-    OLLAMA_API_KEY=$original_api_key
-fi
-if [ "$model_was_set" = x ]; then
-    OLLAMA_MODEL=$original_model
+
+    # Values already supplied by the environment or an earlier file win.
+    if [ "$previous_api_key_valid" -eq 1 ]; then
+        OLLAMA_API_KEY=$previous_api_key
+    fi
+    if [ "$previous_model_valid" -eq 1 ]; then
+        OLLAMA_MODEL=$previous_model
+    fi
+}
+
+if ! configuration_complete; then
+    if [ -n "${AI_CHAT_ENV_FILE:-}" ]; then
+        if [ ! -f "$AI_CHAT_ENV_FILE" ]; then
+            echo "ERROR: Configuration file not found: $AI_CHAT_ENV_FILE" >&2
+            exit 1
+        fi
+        load_config_file "$AI_CHAT_ENV_FILE"
+    else
+        working_config_file=$working_directory/.env
+        load_config_file "$working_config_file"
+        if ! configuration_complete && [ -n "$home_directory" ]; then
+            home_config_file=$home_directory/.env
+            if [ "$home_config_file" != "$working_config_file" ]; then
+                load_config_file "$home_config_file"
+            fi
+        fi
+    fi
 fi
 
 missing=0
-case ${OLLAMA_API_KEY:-} in
-    *[![:space:]]*) ;;
-    *) echo 'ERROR: Missing required environment variable: OLLAMA_API_KEY' >&2; missing=1 ;;
-esac
-case ${OLLAMA_MODEL:-} in
-    *[![:space:]]*) ;;
-    *) echo 'ERROR: Missing required environment variable: OLLAMA_MODEL' >&2; missing=1 ;;
-esac
+if ! has_nonblank "${OLLAMA_API_KEY-}"; then
+    echo 'ERROR: Missing required environment variable: OLLAMA_API_KEY' >&2
+    missing=1
+fi
+if ! has_nonblank "${OLLAMA_MODEL-}"; then
+    echo 'ERROR: Missing required environment variable: OLLAMA_MODEL' >&2
+    missing=1
+fi
 if [ "$missing" -ne 0 ]; then
     exit 1
 fi

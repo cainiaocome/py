@@ -10,13 +10,14 @@ from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
 from pydantic_ai.exceptions import UsageLimitExceeded
-from rich.console import Console
+from rich.console import Console, ConsoleOptions, RenderResult
 from rich.live import Live
 from rich.markdown import Markdown
 
 from ai_chat.chat import Chat
 
-COMMANDS = ("/clear", "/exit", "/model")
+ENABLE_WEB_COMMAND = "/enable-web-search-and-web-fetch"
+COMMANDS = ("/clear", "/exit", "/model", ENABLE_WEB_COMMAND)
 
 
 class CommandCompleter(Completer):
@@ -68,6 +69,7 @@ async def run_chat(chat: Chat, session: PromptSession, console: Console) -> None
     console.print(
         "Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · /clear · /exit · /model"
     )
+    console.print("Web tools: disabled · " + ENABLE_WEB_COMMAND, markup=False)
     while True:
         try:
             prompt = (await session.prompt_async(f"You [{chat.model_name}] > ")).strip()
@@ -77,6 +79,14 @@ async def run_chat(chat: Chat, session: PromptSession, console: Console) -> None
             continue
         if prompt == "/exit":
             break
+        if prompt == ENABLE_WEB_COMMAND:
+            enabled = chat.enable_web()
+            console.print(
+                "[dim]Web search and web fetch enabled for this session.[/dim]"
+                if enabled
+                else "[dim]Web search and web fetch are already enabled.[/dim]"
+            )
+            continue
         if prompt == "/clear":
             chat.clear()
             console.print("[dim]Conversation cleared.[/dim]")
@@ -100,7 +110,9 @@ async def run_chat(chat: Chat, session: PromptSession, console: Console) -> None
             continue
         if prompt.startswith("/"):
             console.print(
-                "[yellow]Unknown command. Use /clear, /exit or /model.[/yellow]"
+                "Unknown command. Available: " + ", ".join(COMMANDS),
+                style="yellow",
+                markup=False,
             )
             continue
         console.print(f"Assistant [{chat.model_name}]", style="bold cyan", markup=False)
@@ -126,19 +138,44 @@ async def run_chat(chat: Chat, session: PromptSession, console: Console) -> None
     console.print("[dim]Goodbye.[/dim]")
 
 
+class MarkdownPreview:
+    """Keep live redraws inside the viewport, including Rich's final refresh."""
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+
+    def __rich_console__(
+        self, console: Console, options: ConsoleOptions
+    ) -> RenderResult:
+        lines = console.render_lines(
+            Markdown(self.text), options.update(height=None), pad=False, new_lines=True
+        )
+        limit = max(1, min(12, options.max_height - 2))
+        for line in lines[-limit:]:
+            yield from line
+
+
 async def render_response(chat: Chat, prompt: str, console: Console) -> None:
-    with Live(
-        Markdown(""),
-        console=console,
-        refresh_per_second=12,
-        vertical_overflow="visible",
-    ) as live:
+    text = ""
+    try:
+        with Live(
+            MarkdownPreview(""),
+            console=console,
+            refresh_per_second=12,
+            vertical_overflow="crop",
+            transient=True,
+        ) as live:
 
-        def activity(status: str) -> None:
-            live.console.print(status, style="dim", markup=False)
+            def activity(status: str) -> None:
+                live.console.print(status, style="dim", markup=False)
 
-        async for text in chat.stream(prompt, on_activity=activity):
-            live.update(Markdown(text))
+            async for text in chat.stream(prompt, on_activity=activity):
+                live.update(MarkdownPreview(text))
+    finally:
+        # Only this stable render enters scrollback. Also retain partial answers
+        # when a request fails or the user interrupts streaming.
+        if text:
+            console.print(Markdown(text))
 
 
 async def select_model(
