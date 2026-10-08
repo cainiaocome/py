@@ -1,0 +1,30 @@
+[project]
+name = "ai-chat"
+version = "0.1.0"
+description = "Minimal streaming terminal chat with Ollama Cloud"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+  "pydantic-ai-slim[openai]>=1.0,<2",
+  "prompt-toolkit>=3.0,<4",
+  "rich>=14,<15",
+  "loguru>=0.7,<1",
+  "python-dotenv>=1.1,<2",
+]
+
+[project.scripts]
+ai-chat = "ai_chat.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = ["pytest>=8,<10", "pytest-asyncio>=1,<2", "ruff>=0.12,<1"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
