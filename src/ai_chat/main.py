@@ -9,11 +9,16 @@ from rich.console import Console
 
 from ai_chat.chat import create_chat
 from ai_chat.terminal import create_session, run_chat
+from ai_chat.ui import run_terminal
 
 
 def main() -> None:
     logger.remove()
-    logger.add(sys.stderr, level="WARNING", format="{level}: {message}")
+    logger.add(
+        lambda message: sys.stderr.write(str(message)),
+        level="WARNING",
+        format="{level}: {message}",
+    )
     console = Console()
     api_key = os.environ.get("OLLAMA_API_KEY", "").strip()
     model = os.environ.get("OLLAMA_MODEL", "").strip()
@@ -26,7 +31,11 @@ def main() -> None:
         logger.error("Missing required environment variables: {}", ", ".join(missing))
         raise SystemExit(1)
     try:
-        asyncio.run(run_chat(create_chat(api_key, model), create_session(), console))
+        chat = create_chat(api_key, model)
+        if sys.stdin.isatty() and sys.stdout.isatty():
+            asyncio.run(run_terminal(chat, console))
+        else:
+            asyncio.run(run_chat(chat, create_session(), console))
     except KeyboardInterrupt:
         console.print("[dim]Goodbye.[/dim]")
 

@@ -29,3 +29,40 @@ def test_whitespace_configuration(monkeypatch, capsys):
     with pytest.raises(SystemExit):
         main()
     assert "OLLAMA_API_KEY" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("input_tty", "output_tty", "expected"),
+    [
+        (True, True, "pinned"),
+        (False, True, "legacy"),
+        (True, False, "legacy"),
+        (False, False, "legacy"),
+    ],
+)
+def test_terminal_routing(monkeypatch, input_tty, output_tty, expected):
+    import importlib
+
+    module = importlib.import_module("ai_chat.main")
+    monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
+    monkeypatch.setenv("OLLAMA_MODEL", "test-model")
+    monkeypatch.setattr(module.sys.stdin, "isatty", lambda: input_tty)
+    monkeypatch.setattr(module.sys.stdout, "isatty", lambda: output_tty)
+    chat = object()
+    session = object()
+    monkeypatch.setattr(module, "create_chat", lambda *args: chat)
+    monkeypatch.setattr(module, "create_session", lambda: session)
+    calls = []
+
+    async def pinned(actual_chat, console):
+        assert actual_chat is chat
+        calls.append("pinned")
+
+    async def legacy(actual_chat, actual_session, console):
+        assert actual_chat is chat and actual_session is session
+        calls.append("legacy")
+
+    monkeypatch.setattr(module, "run_terminal", pinned)
+    monkeypatch.setattr(module, "run_chat", legacy)
+    main()
+    assert calls == [expected]

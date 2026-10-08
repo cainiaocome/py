@@ -1,6 +1,8 @@
 """Interactive input and streamed Markdown output."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
+from typing import Protocol
 
 from loguru import logger
 from prompt_toolkit import PromptSession
@@ -17,6 +19,10 @@ from ai_chat.chat import Chat
 
 ENABLE_WEB_COMMAND = "/enable-web-search-and-web-fetch"
 COMMANDS = ("/clear", "/exit", "/model", ENABLE_WEB_COMMAND)
+
+
+class PromptInput(Protocol):
+    async def prompt_async(self, label: str) -> str: ...
 
 
 class CommandCompleter(Completer):
@@ -63,7 +69,13 @@ def create_session() -> PromptSession:
     )
 
 
-async def run_chat(chat: Chat, session: PromptSession, console: Console) -> None:
+async def run_chat(
+    chat: Chat,
+    session: PromptInput,
+    console: Console,
+    *,
+    response_renderer: Callable[[Chat, str, Console], Awaitable[None]] | None = None,
+) -> None:
     console.print("AI Chat · Ollama Cloud · Model: " + chat.model_name, markup=False)
     console.print(
         "Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · /clear · /exit · /model"
@@ -116,7 +128,9 @@ async def run_chat(chat: Chat, session: PromptSession, console: Console) -> None
             continue
         console.print(f"Assistant [{chat.model_name}]", style="bold cyan", markup=False)
         # A separate task lets Ctrl+C cancel one response without exiting the UI.
-        task = asyncio.create_task(render_response(chat, prompt, console))
+        task = asyncio.create_task(
+            (response_renderer or render_response)(chat, prompt, console)
+        )
         try:
             await task
         except asyncio.CancelledError:
@@ -174,7 +188,7 @@ async def render_response(chat: Chat, prompt: str, console: Console) -> None:
 
 
 async def select_model(
-    chat: Chat, session: PromptSession, console: Console, argument: str
+    chat: Chat, session: PromptInput, console: Console, argument: str
 ) -> None:
     if not argument:
         console.print("Current model: " + chat.model_name, markup=False)

@@ -137,7 +137,10 @@ async def test_mixed_text_search_fetch_and_followup_history():
     ]
     assert chunks[-1] == "Let me check.\n\nAnswer with [source](https://example.com/)."
     assert calls == ["/api/web_search", "/api/web_fetch"]
-    assert activity == ["Searching the web…", "Fetching page…"]
+    assert activity == [
+        "Searching the web: example",
+        "Fetching page: https://example.com/",
+    ]
     assert len(chat.history) == 6
     parts = [part for message in chat.history for part in message.parts]
     assert sum(isinstance(part, ToolCallPart) for part in parts) == 2
@@ -308,3 +311,34 @@ async def test_web_tools_are_opt_in_and_enable_preserves_context():
         _ = [text async for text in chat.stream("hello again")]
     fresh = create_chat("test-key", "test-model")
     assert not fresh.web_enabled
+
+
+@pytest.mark.parametrize(
+    ("name", "args", "expected"),
+    [
+        (
+            "web_search",
+            {"query": "latest Ollama release"},
+            "Searching the web: latest Ollama release",
+        ),
+        (
+            "web_fetch",
+            '{"url":"https://example.com/docs"}',
+            "Fetching page: https://example.com/docs",
+        ),
+        (
+            "web_search",
+            {"query": "\x1b[31munsafe\nquery"},
+            "Searching the web: [31munsafe query",
+        ),
+        ("web_search", "invalid-json", "Searching the web…"),
+        ("web_fetch", {"url": None}, "Fetching page…"),
+        ("other", {"query": "private"}, None),
+    ],
+)
+def test_tool_activity_details_are_safe_and_tolerate_invalid_args(name, args, expected):
+    from pydantic_ai.messages import ToolCallPart
+
+    from ai_chat.chat import tool_activity
+
+    assert tool_activity(ToolCallPart(tool_name=name, args=args)) == expected

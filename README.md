@@ -46,7 +46,13 @@ only and logs an error if either required value is missing or blank. Keep
 - Vim editing is enabled by default; press `i` to enter insert mode, Esc for normal mode.
   The cursor is a beam in Insert mode, a block in Normal mode, and an underline
   in Replace mode (requires a terminal that supports cursor shape changes).
+- The input stays pinned below the conversation and expands for multiline drafts.
 - Enter sends the message; Alt+Enter adds a newline (Esc then Enter also works).
+- You can draft the next message while the assistant responds. Enter preserves
+  that draft until the response finishes; Ctrl+C interrupts the response.
+- PgUp/PgDn or the mouse wheel scroll the conversation without moving input.
+  End while scrolled up, or Ctrl+End, returns to following new output. Submitting
+  a new message also resumes following; incoming tokens alone do not.
 - The active model is shown at startup, in the input prompt, and above each response.
 - `/model` lists Cloud models; choose a number or enter a name (Enter cancels).
 - `/model <name>` switches directly. Switching retains conversation context and
@@ -58,12 +64,16 @@ only and logs an error if either required value is missing or blank. Keep
 - `/exit`, Ctrl+D, or Ctrl+C at the prompt exits.
 - Ctrl+C during a response cancels it and returns to the prompt.
 
-Responses stream as a Markdown preview of up to twelve lines, bounded to the
-terminal height. When streaming ends, the complete formatted answer is printed
-once into scrollback. Interrupted responses retain their partial text on screen.
-Failed or interrupted responses are not added to conversation history. Messages and input history live only in memory and are
-not saved between sessions. Request errors show a short message without logging
-message content or credentials.
+Interactive terminals use a full-screen layout with a scrollable Rich Markdown
+transcript and a fixed input area. Streaming and interrupted replies remain in
+that transcript. On exit the terminal is restored and the complete transcript
+is printed once into normal shell scrollback. Redirected output uses the
+standard scrolling interface and prints complete responses once.
+
+Failed or interrupted responses are not added to model conversation history.
+Messages and input history live only in memory and are not saved between
+sessions. Request errors show a short message without logging message content
+or credentials.
 
 ## Web search and page fetching
 
@@ -85,8 +95,15 @@ Ask naturally, for example:
 - “Search for the latest Ollama release and cite the official announcement.”
 - “Read https://docs.ollama.com/capabilities/web-search and summarize its APIs.”
 
-The terminal shows “Searching the web…” and “Fetching page…” during tool
-execution. The model is instructed to link sources in its Markdown answers and
+During tool execution the terminal shows the actual query or URL, for example:
+
+```text
+Searching the web: latest Ollama release
+Fetching page: https://docs.ollama.com/capabilities/web-search
+```
+
+Tool arguments are displayed as literal text, with terminal control characters
+removed. The model is instructed to link sources in its Markdown answers and
 to report web errors honestly. Tool execution and returned sources remain in
 session history; `/clear` resets them together with the conversation.
 
@@ -133,8 +150,11 @@ make lint
 ```
 
 `make help` lists commands. Tests use Pydantic AI's test models, mocked HTTP
-responses, and a terminal emulator for Markdown scrollback regression checks;
-they do not need a Cloud API key. `uv.lock` pins the resolved dependencies for reproducible installs.
+responses, and a terminal emulator for Markdown scrollback and pinned-layout
+regression checks. They cover real keyboard input, resize/scroll behavior,
+streaming drafts, Vim cursors, commands, interruption, cleanup, and literal tool
+details. They do not need a Cloud API key. `uv.lock` pins resolved dependencies
+for reproducible installs.
 
 Build and try the container locally:
 
