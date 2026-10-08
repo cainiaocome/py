@@ -28,6 +28,12 @@ Tests: full suite 105 passed, Ruff and diff checks clean (the existing
 scroll/wrap/resize tests still pass because the box keeps a three-line floor and
 its old growth for long drafts).
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
-3d8421e and home files. No system packages installed.
+Validation: commit 990fb92; full suite 105 passed, Ruff and diff checks clean.
+Actions https://github.com/cainiaocome/py/actions/runs/37837153963 succeeded.
+Published image ghcr.io/cainiaocome/py:latest digest
+sha256:15477ba555c8d476e6dd8371708632bf74e1ae4594759739cc5732874ea11a99. A
+real-PTY run of that image confirmed the prompt and typing share one line
+(`You [dummy] > hello`), continuation lines align under the first input column,
+and after filling the transcript with a long submitted message the empty input
+box stays exactly three rows at the same screen position. Preserve .env, user
+commit 3d8421e and home files. No system packages installed.
