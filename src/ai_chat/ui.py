@@ -627,6 +627,16 @@ class TerminalUI:
             self._g_pending = False
             self.next_message()
 
+        @bindings.add("j", filter=vi_navigation_mode, eager=True)
+        def scroll_line_down(event) -> None:
+            del event
+            self._scroll_forward(1)
+
+        @bindings.add("k", filter=vi_navigation_mode, eager=True)
+        def scroll_line_up(event) -> None:
+            del event
+            self._scroll_back(1)
+
         @bindings.add("G", filter=vi_navigation_mode, eager=True)
         @bindings.add(
             "end", filter=Condition(lambda: not self._follow_tail), eager=True

@@ -85,12 +85,13 @@ different things in each:
 Submitting a new message also resumes following. Incoming tokens alone do not
 move a paused view.
 
-### Jumping between questions (normal mode)
+### Normal-mode navigation
 
-Press Esc for normal mode, then use these to reread earlier answers:
+Press Esc for normal mode, then:
 
 | Key | Action |
 | --- | --- |
+| `j`, `k` | Scroll one line down / up. |
 | `gg`, `p` | Move to the previous question and pin it at the top. The first press jumps to the most recent question; press again to walk further back. |
 | `n` | Move to the next question, when there is one. |
 | `G` | Go to the very end of the transcript and follow new output. |

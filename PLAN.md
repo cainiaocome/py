@@ -102,3 +102,22 @@ sha256:ede0777c2ce8ee8c9b6b3acb681452d590c91acde34406c1cb7009eb545c4385. A
 real-PTY run of that image confirmed slow `gg`, fast `gg`, `n`, `p`, a clamped
 `n` at the last question, and `G` back to the end, all without exiting (Ctrl+C
 still exit code 0).
+
+## Normal-mode j/k line scrolling
+
+Current goal (user request): `j`/`k` in normal mode scroll the transcript one
+line down/up.
+
+Changes:
+
+- `src/ai_chat/ui.py`: eager normal-mode `j`/`k` bindings call
+  `_scroll_forward(1)` / `_scroll_back(1)`, overriding Vim's cursor-line motion
+  in the input buffer.
+- `tests/test_ui.py`: new test checks `k` pauses and steps one line up, and `j`
+  steps one line back down.
+- `README.md`: renamed the normal-mode table and added the `j`/`k` row.
+
+Full suite 116 passed, Ruff and diff checks clean.
+
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow).

@@ -659,6 +659,39 @@ async def test_normal_mode_message_navigation_keys():
 
 
 @pytest.mark.asyncio
+async def test_normal_mode_j_k_scroll_one_line():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+        terminal.send("\x1b")
+        await terminal.wait_for(
+            lambda: terminal.ui.app.vi_state.input_mode == InputMode.NAVIGATION,
+            "normal mode",
+        )
+        assert terminal.ui.following_tail
+
+        terminal.send("k")
+        await terminal.wait_for(
+            lambda: not terminal.ui.following_tail, "k pauses the transcript"
+        )
+        first = terminal.ui.scroll_offset
+        assert first > 0
+        terminal.send("k")
+        await terminal.wait_for(
+            lambda: terminal.ui.scroll_offset == first - 1, "k scrolls one line up"
+        )
+        terminal.send("j")
+        await terminal.wait_for(
+            lambda: terminal.ui.scroll_offset == first, "j scrolls one line down"
+        )
+
+
+@pytest.mark.asyncio
 async def test_streaming_keeps_input_pinned_and_draft_survives_busy_enter():
     chat = FakeChat()
     gate = asyncio.Event()
