@@ -347,7 +347,7 @@ async def test_ctrl_u_half_page_up_in_normal_mode():
 
 
 @pytest.mark.asyncio
-async def test_ctrl_d_insert_noop_and_normal_half_page_down():
+async def test_ctrl_d_insert_draft_noop_and_normal_half_page_down():
     chat = FakeChat()
     chat.responses["long"] = (long_markdown(), long_markdown())
     async with running_ui(chat, width=72, height=14) as terminal:
@@ -357,13 +357,7 @@ async def test_ctrl_d_insert_noop_and_normal_half_page_down():
             "long transcript",
         )
 
-        # Insert mode at an empty prompt: Ctrl+D must neither exit nor edit.
-        terminal.send("\x04")
-        await asyncio.sleep(0.2)
-        assert terminal.ui.app.is_running
-        assert terminal.ui.waiting_for_input
-        assert terminal.ui.buffer.text == ""
-
+        # Insert mode with a draft: Ctrl+D must neither exit nor edit.
         terminal.send("draft")
         await terminal.wait_for(lambda: terminal.ui.buffer.text == "draft", "draft")
         terminal.send("\x04")
@@ -916,11 +910,12 @@ async def test_model_picker_cancel_and_ctrl_c_while_model_list_is_waiting():
 
 @pytest.mark.asyncio
 @pytest.mark.asyncio
-async def test_idle_ctrl_c_restores_terminal_and_prints_goodbye_once():
+@pytest.mark.parametrize("key", ["\x03", "\x04"], ids=["ctrl-c", "ctrl-d"])
+async def test_idle_exit_restores_terminal_and_prints_goodbye_once(key):
     chat = FakeChat()
     async with running_ui(chat, width=72, height=16) as terminal:
         terminal.sync()
-        terminal.send("\x03")
+        terminal.send(key)
         await terminal.wait_for(lambda: terminal.task.done(), "clean application exit")
         raw_terminal = terminal.output_stream.getvalue()
         assert "\x1b[?1049h" in raw_terminal

@@ -52,9 +52,9 @@ only and logs an error if either required value is missing or blank. Keep
 - Enter sends the message; Alt+Enter inserts a newline. Esc leaves insert
   mode immediately.
 - Mode-aware shortcuts: Ctrl+U clears the current line (insert) or scrolls half
-  a page up (normal); Ctrl+D does nothing (insert) or scrolls half a page down
-  (normal); Ctrl+E moves to the end of the line (insert) or does nothing
-  (normal).
+  a page up (normal); Ctrl+D scrolls half a page down (normal) and in insert mode
+  exits at an empty prompt (like a shell) but is otherwise a no-op; Ctrl+E moves
+  to the end of the line (insert) or does nothing (normal).
 - Ctrl+B and Ctrl+F scroll a full page up and down in both insert and normal mode.
 - You can draft the next message while the assistant responds. Enter preserves
   that draft until the response finishes; Ctrl+C interrupts the response.
@@ -71,7 +71,7 @@ only and logs an error if either required value is missing or blank. Keep
   filters as you type; Up/Down or Tab select a candidate and Enter runs it.
 - `/clear` resets model context and clears the displayed conversation; input
   history remains available within the session.
-- `/exit` or Ctrl+C at the prompt exits.
+- `/exit`, Ctrl+D at an empty prompt, or Ctrl+C at the prompt exits.
 - Ctrl+C during a response cancels it and returns to the prompt.
 
 Interactive terminals use a full-screen layout with a scrollable Rich Markdown

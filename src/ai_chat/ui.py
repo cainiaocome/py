@@ -484,8 +484,13 @@ class TerminalUI:
             self._scroll_back(self._half_page_lines())
 
         @bindings.add("c-d", filter=editing_modes, eager=True)
-        def ignore_ctrl_d(event) -> None:
-            del event
+        def exit_on_empty(event) -> None:
+            # Shell-style Ctrl+D: exit at an empty prompt, otherwise do nothing
+            # so it cannot delete or unindent the draft.
+            if not event.current_buffer.text and self.waiting_for_input:
+                assert self._pending_prompt is not None
+                self._pending_prompt.set_exception(EOFError())
+                self._set_status("Exiting…")
 
         @bindings.add("c-d", filter=vi_navigation_mode, eager=True)
         def half_page_down(event) -> None:

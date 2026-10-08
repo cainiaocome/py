@@ -1,42 +1,24 @@
-# AI CLI Chat — mode-aware key bindings
+# AI CLI Chat — Ctrl+D exits in insert mode
 
-Previous requests complete: stable inline input box plus the live slash command
-palette. 108 tests; commit 990fb92/abfb454, Actions
-https://github.com/cainiaocome/py/actions/runs/37837153963, published image digest
-sha256:15477ba555c8d476e6dd8371708632bf74e1ae4594759739cc5732874ea11a99.
+Previous request complete: mode-aware scroll/edit key bindings. 109 tests; commit
+aa6668f/5b9bab0, Actions
+https://github.com/cainiaocome/py/actions/runs/37854497232, published image digest
+sha256:f57bd070fa722a91c6749f00e76f653971630b59a17f6374575335f3c8173b8b.
 
-Current goal (user request): mode-aware shortcuts, with Ctrl+B/Ctrl+F paging the
-transcript in both insert and normal mode.
+Current goal (user request): restore Ctrl+D exiting in insert mode.
 
-Changes in `src/ai_chat/ui.py`:
+Change in `src/ai_chat/ui.py`:
 
-- Ctrl+B and Ctrl+F scroll a full transcript page up/down in both modes (page =
-  viewport minus two lines, matching PgUp/PgDn).
-- Ctrl+U clears the current line in insert/replace mode and scrolls half a page
-  up in normal mode.
-- Ctrl+D is a no-op in insert/replace mode and scrolls half a page down in
-  normal mode. This intentionally removes the old "Ctrl+D at an empty prompt
-  exits" behavior; `/exit` and Ctrl+C still exit.
-- Ctrl+E moves to the end of the current line in insert/replace mode and does
-  nothing in normal mode.
-- Added `_page_lines`/`_half_page_lines` helpers and an `editing_modes` filter
-  (`vi_insert_mode | vi_insert_multiple_mode | vi_replace_mode`) so each key can
-  dispatch on insert vs navigation mode. All new bindings are eager app-level
-  bindings, so they override prompt_toolkit's default Vi page navigation.
+- The insert/replace-mode Ctrl+D binding is now shell-style: at an empty prompt it
+  exits (raises `EOFError` on the pending prompt), and with text in the draft it
+  stays a no-op so it cannot delete or unindent input. Normal-mode Ctrl+D still
+  scrolls half a page down. `/exit` and Ctrl+C continue to exit.
 
-Tests: added coverage for Ctrl+B/F in both modes, Ctrl+U half-page in normal
-mode, Ctrl+D no-op (including not exiting at an empty prompt) plus half-page in
-normal mode, and Ctrl+E end-of-line plus normal-mode no-op. Updated the idle-exit
-test to Ctrl+C only and the README key list. Full suite 108 passed, Ruff and diff
-checks clean.
+Tests: the idle-exit test is parametrized over Ctrl+C and Ctrl+D again, and the
+draft test now checks that Ctrl+D does not exit or edit a non-empty insert draft
+plus the normal-mode half page down. Full suite 109 passed, Ruff and diff checks
+clean.
 
-Validation: commit aa6668f; full suite 108 passed, Ruff and diff checks clean.
-Actions https://github.com/cainiaocome/py/actions/runs/37854497232 succeeded.
-Published image ghcr.io/cainiaocome/py:latest digest
-sha256:f57bd070fa722a91c6749f00e76f653971630b59a17f6374575335f3c8173b8b. A
-real-PTY run of that image confirmed: Ctrl+B/Ctrl+F page the transcript in both
-insert and normal mode, normal Ctrl+U scrolls half a page up and normal Ctrl+D
-returns half a page down, normal Ctrl+E is a no-op, insert Ctrl+E moves to the
-line end (typing after it appended to `hello!`), insert Ctrl+D neither exited nor
-edited, and insert Ctrl+U cleared the line. Preserve .env, user commit 3d8421e
-and home files. No system packages installed.
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
+3d8421e and home files. No system packages installed.
