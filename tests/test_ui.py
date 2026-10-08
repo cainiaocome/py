@@ -1023,3 +1023,88 @@ async def test_markdown_links_render_readably_live_and_remain_hyperlinked_in_scr
     assert "Official docs" in final_output
     assert "https://example.test/document" in final_output
     assert "\x1b]8;" in final_output
+
+
+@pytest.mark.asyncio
+async def test_command_palette_lists_and_filters_commands_live():
+    chat = FakeChat()
+    async with running_ui(chat, width=90, height=22) as terminal:
+        terminal.send("/")
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.complete_state is not None, "command palette"
+        )
+        assert len(terminal.ui.buffer.complete_state.completions) == 4
+        await terminal.wait_for(
+            lambda: all(
+                command in terminal.text()
+                for command in (
+                    "/clear",
+                    "/exit",
+                    "/model",
+                    "/enable-web-search-and-web-fetch",
+                )
+            ),
+            "all commands listed",
+        )
+
+        terminal.send("c")
+        await terminal.wait_for(
+            lambda: (
+                terminal.ui.buffer.complete_state is not None
+                and [
+                    completion.text
+                    for completion in terminal.ui.buffer.complete_state.completions
+                ]
+                == ["/clear"]
+            ),
+            "palette filters as the user types",
+        )
+        await terminal.wait_for(
+            lambda: "Clear conversation and transcript" in terminal.text(),
+            "candidate description",
+        )
+
+        # No match hides the palette; deleting reveals it again (prompt_toolkit
+        # only auto-completes after insertion, so the UI rebuilds it on shrink).
+        terminal.send("z")
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.complete_state is None, "palette hidden"
+        )
+        terminal.send("\x7f")
+        await terminal.wait_for(
+            lambda: (
+                terminal.ui.buffer.complete_state is not None
+                and [
+                    completion.text
+                    for completion in terminal.ui.buffer.complete_state.completions
+                ]
+                == ["/clear"]
+            ),
+            "palette rebuilt after deletion",
+        )
+
+
+@pytest.mark.asyncio
+async def test_command_palette_selection_and_tab_complete_run_commands():
+    chat = FakeChat()
+    async with running_ui(chat, width=90, height=22) as terminal:
+        terminal.send("/cl")
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.complete_state is not None, "command palette"
+        )
+        terminal.send("\x1b[B")  # Down arrow highlights/inserts the match
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.text == "/clear", "selection applied"
+        )
+        terminal.send("\r")
+        await terminal.wait_for(lambda: chat.cleared == 1, "/clear ran")
+        assert terminal.ui.buffer.text == ""
+
+        terminal.send("/mo")
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.complete_state is not None, "second palette"
+        )
+        terminal.send("\t")
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.text == "/model", "Tab completes"
+        )

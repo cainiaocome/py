@@ -12,9 +12,15 @@ from typing import Any
 from loguru import logger
 from prompt_toolkit import Application
 from prompt_toolkit.buffer import Buffer
+from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.cursor_shapes import ModalCursorShapeConfig
 from prompt_toolkit.enums import EditingMode
-from prompt_toolkit.filters import Condition, vi_insert_mode, vi_replace_mode
+from prompt_toolkit.filters import (
+    Condition,
+    has_completions,
+    vi_insert_mode,
+    vi_replace_mode,
+)
 from prompt_toolkit.formatted_text import ANSI, FormattedText, split_lines
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.input import Input, create_input
@@ -176,15 +182,16 @@ class TerminalUI:
         self._scroll_offset = 0
         self._active_response_entry: TranscriptEntry | None = None
         self._line_count = 0
+        self._text_length = 0
 
         self.buffer = Buffer(
             completer=CommandCompleter(),
             history=InMemoryHistory(),
-            complete_while_typing=False,
+            complete_while_typing=True,
             multiline=True,
             accept_handler=self._accept_input,
         )
-        self.buffer.on_text_changed += self._on_buffer_changed
+        self.buffer.on_text_changed += self._on_text_changed
         self.buffer.on_cursor_position_changed += self._on_buffer_changed
 
         self._prompt_control = FormattedTextControl(
@@ -251,6 +258,8 @@ class TerminalUI:
                     "completion-menu": "bg:#303030 #ffffff",
                     "completion-menu.completion": "bg:#303030 #ffffff",
                     "completion-menu.completion.current": "bg:#005f87 #ffffff",
+                    "completion-menu.meta.completion": "bg:#303030 #808080",
+                    "completion-menu.meta.completion.current": "bg:#005f87 #afd7ff",
                 }
             ),
         )
@@ -437,6 +446,30 @@ class TerminalUI:
             del event
             self._scroll_forward(max(1, self._viewport_height() - 2))
 
+        @bindings.add("tab", eager=True)
+        def complete_command(event) -> None:
+            # Apply synchronously so Tab is not raced by the automatic
+            # completion triggered on every keystroke.
+            if self.buffer.complete_state is None:
+                completions = list(
+                    self.buffer.completer.get_completions(
+                        self.buffer.document,
+                        CompleteEvent(completion_requested=True),
+                    )
+                )
+                if completions:
+                    self.buffer.apply_completion(completions[0])
+            else:
+                self._cycle_completions(1)
+
+        @bindings.add("down", filter=has_completions, eager=True)
+        def next_completion(event) -> None:
+            self._cycle_completions(1)
+
+        @bindings.add("up", filter=has_completions, eager=True)
+        def previous_completion(event) -> None:
+            self._cycle_completions(-1)
+
         @bindings.add("c-u", filter=vi_insert_mode | vi_replace_mode, eager=True)
         def clear_line(event) -> None:
             # Vim half-page scrolling shadows the readline binding in full-screen
@@ -475,6 +508,31 @@ class TerminalUI:
             self.app.invalidate()
 
     def _on_buffer_changed(self, *_: object) -> None:
+        self._changed()
+
+    def _cycle_completions(self, step: int) -> None:
+        """Cycle command candidates without falling back to the typed prefix."""
+        state = self.buffer.complete_state
+        if state is None or not state.completions:
+            return
+        count = len(state.completions)
+        if state.complete_index is None:
+            index = 0 if step > 0 else count - 1
+        else:
+            index = (state.complete_index + step) % count
+        self.buffer.go_to_completion(index)
+
+    def _on_text_changed(self, *_: object) -> None:
+        # prompt_toolkit only auto-completes after insertion, so a command
+        # palette would vanish when deleting. Rebuild it after shrink edits;
+        # applying a completion only ever grows the text, so it is not re-run.
+        previous, self._text_length = self._text_length, len(self.buffer.text)
+        if (
+            self._text_length < previous
+            and self.buffer.text.startswith("/")
+            and "\n" not in self.buffer.text
+        ):
+            self.buffer.start_completion()
         self._changed()
 
     def _prompt_text(self) -> FormattedText:

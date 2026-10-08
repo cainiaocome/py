@@ -61,7 +61,8 @@ only and logs an error if either required value is missing or blank. Keep
   applies only to this session; `.env` is unchanged. Model availability is checked
   by Ollama when you send your next message.
 - `/enable-web-search-and-web-fetch` enables both web tools for this session.
-- Tab completes all commands, including the web-enable command; repeated Tab cycles matches.
+- Typing `/` opens a live command palette with a description for each command. It
+  filters as you type; Up/Down or Tab select a candidate and Enter runs it.
 - `/clear` resets model context and clears the displayed conversation; input
   history remains available within the session.
 - `/exit`, Ctrl+D, or Ctrl+C at the prompt exits.

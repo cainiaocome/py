@@ -19,6 +19,12 @@ from ai_chat.chat import Chat
 
 ENABLE_WEB_COMMAND = "/enable-web-search-and-web-fetch"
 COMMANDS = ("/clear", "/exit", "/model", ENABLE_WEB_COMMAND)
+COMMAND_DESCRIPTIONS = {
+    "/clear": "Clear conversation and transcript",
+    "/exit": "Exit the chat",
+    "/model": "Show or switch the model",
+    ENABLE_WEB_COMMAND: "Enable web search and fetch tools",
+}
 
 
 class PromptInput(Protocol):
@@ -32,7 +38,11 @@ class CommandCompleter(Completer):
             return
         for command in COMMANDS:
             if command.startswith(text):
-                yield Completion(command, start_position=-len(text))
+                yield Completion(
+                    command,
+                    start_position=-len(text),
+                    display_meta=COMMAND_DESCRIPTIONS.get(command, ""),
+                )
 
 
 def key_bindings() -> KeyBindings:
