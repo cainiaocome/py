@@ -21,6 +21,12 @@ Tests: added an empty-insert Ctrl+U half-page test and an insert Ctrl+D test
 (draft no-op, half page down while scrolled up, exit at the empty tail). Full
 suite 111 passed, Ruff and diff checks clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
-3d8421e and home files. No system packages installed.
+Validation: commit 81b7f14; full suite 111 passed, Ruff and diff checks clean.
+Actions https://github.com/cainiaocome/py/actions/runs/37856921678 succeeded.
+Published image ghcr.io/cainiaocome/py:latest digest
+sha256:6cd067c1bef45fc5db7c7f2b76705841feb5dc1b3e469538f0069d2c7af2a1ab. A
+real-PTY run of that image confirmed Ctrl+U on an empty insert prompt scrolled
+the transcript up, Ctrl+D scrolled it back to the tail and exited cleanly once
+at the empty bottom (exit code 0), and Ctrl+U with typed text cleared the line
+without scrolling. Preserve .env, user commit 3d8421e and home files. No system
+packages installed.
