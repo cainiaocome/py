@@ -119,5 +119,10 @@ Changes:
 
 Full suite 116 passed, Ruff and diff checks clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow).
+Validation: commit dd1fb3c; full suite 116 passed. Actions
+https://github.com/cainiaocome/py/actions/runs/37861447900 succeeded. Published
+image ghcr.io/cainiaocome/py:latest digest
+sha256:b75a4a558dc450c89e6a7f21dc8bca73adb4c8b2321eb48e9157834870ad640c. A
+real-PTY run of that image confirmed two `k` presses pause the transcript, one
+`j` keeps it paused (one-line movement, not a page), the next `j` follows the
+tail again, and Ctrl+C still exits cleanly (code 0).
