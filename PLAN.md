@@ -95,5 +95,10 @@ Changes:
 
 Full suite 115 passed, Ruff and diff checks clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow).
+Validation: commit af33932; full suite 115 passed. Actions
+https://github.com/cainiaocome/py/actions/runs/37860537647 succeeded. Published
+image ghcr.io/cainiaocome/py:latest digest
+sha256:ede0777c2ce8ee8c9b6b3acb681452d590c91acde34406c1cb7009eb545c4385. A
+real-PTY run of that image confirmed slow `gg`, fast `gg`, `n`, `p`, a clamped
+`n` at the last question, and `G` back to the end, all without exiting (Ctrl+C
+still exit code 0).
