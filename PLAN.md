@@ -70,3 +70,30 @@ sha256:ba129a0544f1641a80bf6b56c4fbc7e6ae918e91ce8027844a9e9137945cdd92. A
 real-PTY run of that image confirmed `/start` puts the last question's first line
 at the top of the transcript, is idempotent and never exits, prints "No previous
 message to scroll to." after `/clear`, and Ctrl+C still exits cleanly (code 0).
+
+## Normal-mode message navigation
+
+Current goal (user request): normal-mode keys to move between questions —
+`gg`/`p` to go back one question per press (first press goes to the most recent),
+`n` to go forward one question when one exists, and `G` to jump to the real end
+of the transcript.
+
+Changes:
+
+- `src/ai_chat/ui.py`: replaced the single `_last_user_entry` reference with a
+  `_user_entries` list. `_message_anchors` computes each question's first
+  transcript line from the rendered entries; `previous_message`/`next_message`
+  pick the neighbouring anchor relative to the current top line, so manual
+  scrolling still behaves; `_pin_offset` reuses the `/start` pinning (clamping to
+  the last screenful). `G` shares the `End`/`Ctrl+End` follow-tail handler.
+  Because the 50 ms key timeout can flush a lone `g`, a non-eager `g` handler
+  remembers it so a slower second `g` still counts as `gg`; Esc stays immediate,
+  and Vi's other `g`-prefixed commands still work when typed together.
+- `tests/test_ui.py`: new test drives slow `gg`, fast `gg`, `n`, `p`, a no-op `n`
+  at the last question, and `G`.
+- `README.md`: added a "Jumping between questions (normal mode)" table.
+
+Full suite 115 passed, Ruff and diff checks clean.
+
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow).

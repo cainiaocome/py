@@ -594,6 +594,71 @@ async def test_start_command_after_clear_reports_nothing_to_scroll():
 
 
 @pytest.mark.asyncio
+async def test_normal_mode_message_navigation_keys():
+    chat = FakeChat()
+    chat.responses["one"] = (long_markdown(), long_markdown())
+    chat.responses["two"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("one\r")
+        await terminal.wait_for(
+            lambda: "one" in chat.history and terminal.ui.waiting_for_input,
+            "first answer",
+        )
+        terminal.send("two\r")
+        await terminal.wait_for(
+            lambda: "two" in chat.history and terminal.ui.waiting_for_input,
+            "second answer",
+        )
+        terminal.send("\x1b")
+        await terminal.wait_for(
+            lambda: terminal.ui.app.vi_state.input_mode == InputMode.NAVIGATION,
+            "normal mode",
+        )
+        assert terminal.ui.following_tail
+
+        # A slow `g` `g` still works: the short timeout flushes the first `g`.
+        terminal.send("g")
+        await asyncio.sleep(0.15)
+        terminal.send("g")
+        await terminal.wait_for(
+            lambda: terminal.text().splitlines()[0].startswith("You [model-a] > two"),
+            "slow gg goes to the last question",
+        )
+        # A fast `gg` walks one question further back.
+        terminal.send("gg")
+        await terminal.wait_for(
+            lambda: terminal.text().splitlines()[0].startswith("You [model-a] > one"),
+            "gg goes to the previous question",
+        )
+        # `n` and `p` step forward and back between questions.
+        terminal.send("n")
+        await terminal.wait_for(
+            lambda: terminal.text().splitlines()[0].startswith("You [model-a] > two"),
+            "n goes forward",
+        )
+        terminal.send("p")
+        await terminal.wait_for(
+            lambda: terminal.text().splitlines()[0].startswith("You [model-a] > one"),
+            "p goes back",
+        )
+        terminal.send("n")
+        await terminal.wait_for(
+            lambda: terminal.text().splitlines()[0].startswith("You [model-a] > two"),
+            "n returns to the last question",
+        )
+        # There is no question after the last one.
+        terminal.send("n")
+        await asyncio.sleep(0.1)
+        assert terminal.text().splitlines()[0].startswith("You [model-a] > two")
+        assert not terminal.ui.following_tail
+
+        # `G` goes to the real end and follows new output.
+        terminal.send("G")
+        await terminal.wait_for(lambda: terminal.ui.following_tail, "G goes to the end")
+        assert terminal.ui.scroll_offset == 0
+
+
+@pytest.mark.asyncio
 async def test_streaming_keeps_input_pinned_and_draft_survives_busy_enter():
     chat = FakeChat()
     gate = asyncio.Event()

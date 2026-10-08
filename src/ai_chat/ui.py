@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import time
 import unicodedata
 from copy import copy
 from dataclasses import dataclass, field
@@ -130,8 +131,9 @@ class TranscriptConsole(Console):
         """Drop the displayed conversation after the model context is reset."""
         self.ui.entries.clear()
         self.ui._active_response_entry = None
-        self.ui._last_user_entry = None
+        self.ui._user_entries.clear()
         self.ui._last_echo_entry = None
+        self.ui._g_pending = False
         self.ui._follow_tail = True
         self.ui._scroll_offset = 0
         self.ui._changed()
@@ -185,8 +187,10 @@ class TerminalUI:
         self._follow_tail = True
         self._scroll_offset = 0
         self._active_response_entry: TranscriptEntry | None = None
-        self._last_user_entry: TranscriptEntry | None = None
+        self._user_entries: list[TranscriptEntry] = []
         self._last_echo_entry: TranscriptEntry | None = None
+        self._g_pending = False
+        self._g_time = 0.0
         self._line_count = 0
         self._text_length = 0
 
@@ -399,6 +403,7 @@ class TerminalUI:
         )
         if self.entries:
             self._last_echo_entry = self.entries[-1]
+        self._g_pending = False
         self._follow_tail = True
         self._scroll_offset = 0
         future.set_result(value)
@@ -407,38 +412,82 @@ class TerminalUI:
 
     def mark_last_message(self) -> None:
         """Remember the echoed line that began the latest assistant turn."""
-        if self._last_echo_entry is not None:
-            self._last_user_entry = self._last_echo_entry
+        entry = self._last_echo_entry
+        if entry is None or (self._user_entries and self._user_entries[-1] is entry):
+            return
+        self._user_entries.append(entry)
 
     def scroll_to_last_message(self) -> None:
         """Pin the last answered question at the top so its reply reads in full."""
-        entry = self._last_user_entry
-        if entry is None or entry not in self.entries:
-            self.transcript_console.print(
-                Text("No previous message to scroll to.", style="dim"), markup=False
-            )
+        anchors = self._message_anchors()
+        if not anchors:
+            self._notify_no_message()
             return
+        self._pin_offset(anchors[-1][1])
+
+    def previous_message(self) -> None:
+        """Move to the previous question, or the last one when following the tail."""
+        anchors = self._message_anchors()
+        if not anchors:
+            self._notify_no_message()
+            return
+        current = self._current_top_offset()
+        target = anchors[0][1]
+        for _, offset in anchors:
+            if offset < current:
+                target = offset
+        self._pin_offset(target)
+
+    def next_message(self) -> None:
+        """Move to the next question, when one exists."""
+        anchors = self._message_anchors()
+        if not anchors:
+            self._notify_no_message()
+            return
+        current = self._current_top_offset()
+        for _, offset in anchors:
+            if offset > current:
+                self._pin_offset(offset)
+                return
+
+    def _message_anchors(self) -> list[tuple[TranscriptEntry, int]]:
+        """First transcript line of every question, in order."""
         width = self._transcript_width()
-        fragments: list[tuple[str, str]] = []
-        for candidate in self.entries:
-            if candidate is entry:
-                break
-            fragments.extend(candidate.render(width).__pt_formatted_text__())
-        # split_lines always yields a trailing empty line, and the last one is
-        # the target's own first line, so drop it to get the top line index.
-        offset = max(0, len(list(split_lines(FormattedText(fragments)))) - 1)
-        max_offset = self._max_scroll_offset(self._viewport_height())
-        if offset < max_offset:
+        wanted = {id(entry) for entry in self._user_entries}
+        anchors: list[tuple[TranscriptEntry, int]] = []
+        offset = 0
+        for entry in self.entries:
+            if id(entry) in wanted:
+                anchors.append((entry, offset))
+            offset += self._visible_lines(entry, width)
+        return anchors
+
+    def _visible_lines(self, entry: TranscriptEntry, width: int) -> int:
+        # split_lines always yields one extra trailing (empty) line.
+        fragments = list(entry.render(width).__pt_formatted_text__())
+        return max(0, len(list(split_lines(FormattedText(fragments)))) - 1)
+
+    def _current_top_offset(self) -> int:
+        if self._follow_tail:
+            return self._max_scroll_offset(self._viewport_height())
+        return self._scroll_offset
+
+    def _pin_offset(self, offset: int) -> None:
+        if offset < self._max_scroll_offset(self._viewport_height()):
             self._follow_tail = False
             self._scroll_offset = offset
-            self._set_status("At your last message · End follows new output")
+            self._set_status("At message · gg/p back · n forward · G end")
         else:
-            # The question is too close to the bottom to pin at the top; the
-            # bottom of the reply is the best view, so keep following it.
+            # Too close to the bottom to pin at the top; the tail is the best view.
             self._follow_tail = True
             self._scroll_offset = 0
             self._set_status("Following transcript")
         self._changed()
+
+    def _notify_no_message(self) -> None:
+        self.transcript_console.print(
+            Text("No previous message to scroll to.", style="dim"), markup=False
+        )
 
     def _create_key_bindings(self) -> KeyBindings:
         bindings = KeyBindings()
@@ -546,6 +595,39 @@ class TerminalUI:
         def ignore_ctrl_e(event) -> None:
             del event
 
+        @bindings.add("g", filter=vi_navigation_mode)
+        def gg_prefix(event) -> None:
+            # `gg` is two keys, but the short key timeout can flush a lone `g`.
+            # Remember it so a second, slower `g` still moves to the previous
+            # question instead of being dropped.
+            del event
+            now = time.monotonic()
+            if self._g_pending and now - self._g_time <= 1.5:
+                self._g_pending = False
+                self.previous_message()
+            else:
+                self._g_pending = True
+                self._g_time = now
+
+        @bindings.add("g", "g", filter=vi_navigation_mode)
+        def gg_previous(event) -> None:
+            del event
+            self._g_pending = False
+            self.previous_message()
+
+        @bindings.add("p", filter=vi_navigation_mode)
+        def p_previous(event) -> None:
+            del event
+            self._g_pending = False
+            self.previous_message()
+
+        @bindings.add("n", filter=vi_navigation_mode)
+        def n_next(event) -> None:
+            del event
+            self._g_pending = False
+            self.next_message()
+
+        @bindings.add("G", filter=vi_navigation_mode, eager=True)
         @bindings.add(
             "end", filter=Condition(lambda: not self._follow_tail), eager=True
         )
@@ -554,6 +636,7 @@ class TerminalUI:
             del event
             self._follow_tail = True
             self._scroll_offset = 0
+            self._set_status("Following transcript")
             self._changed()
 
         # Reuse the controller's command completion, Tab behavior, and the
