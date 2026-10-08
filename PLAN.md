@@ -31,6 +31,24 @@ source/diff review complete. Latest disabled-switch test passed focused9 cases.
 Live Cloud: default session made zero tool calls; enabling retained context and
 then executed search+fetch with activity and a citation.
 
-Remaining: local Docker/PTY checks, commit/push, Actions publication and published
-launcher check. Preserve original untracked AGENTS.md and docs/spec.md. Do not
-modify actual home files or private .env. No system packages installed.
+Implementation pushed as 106e2bb on main. GitHub Actions tests and the
+amd64/arm64 image build passed:
+https://github.com/cainiaocome/py/actions/runs/37823546952
+Published ghcr.io/cainiaocome/py:latest at digest
+sha256:2903e9c47624ca90f78897ae02d5c031a8d7e2ab09edfb534a0339d2e15a48d9.
+
+Validation passed: 72 tests, lint, shell syntax, diff check, and local Docker
+build. Baseline scrollback tests reproduced four failures before the renderer
+fix. The production image passed a 40x8 pyte scrollback probe with unique early
+and final Markdown markers and bold styling; pyte is absent from the image and
+MarkdownPreview imports successfully. Local PTY verified web disabled by
+default, Tab completion/enabling, idempotence, and enabled tools surviving
+/model and /clear, followed by successful search/fetch with activity and a
+cited response. Published scripts/py passed from the repository directory with
+host Ollama variables unset, loading CWD .env; it showed disabled startup,
+enabled by Tab-completed command, and successful search/fetch after /model and
+/clear. The live container had zero mounts, UID/GID 10001:10001, both required
+environment variables present without exposing values, and no /app/.env.
+No remaining implementation work or blockers. Preserve original untracked
+AGENTS.md and docs/spec.md. Do not modify actual home files or private .env.
+No system packages installed.
