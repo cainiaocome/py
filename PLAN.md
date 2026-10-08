@@ -1,39 +1,35 @@
-# AI CLI Chat — input layout
+# AI CLI Chat — mode-aware key bindings
 
-Previous requests complete: live slash command palette plus the earlier input UX
-fixes. 105 tests; commits 2870236/995a0f3, Actions
-https://github.com/cainiaocome/py/actions/runs/37835460727, published image digest
-sha256:c61a15f51af2e3e3f47b5d59ec5efe597f9263310c07a5e7a8e924cd1c9bafc1.
+Previous requests complete: stable inline input box plus the live slash command
+palette. 108 tests; commit 990fb92/abfb454, Actions
+https://github.com/cainiaocome/py/actions/runs/37837153963, published image digest
+sha256:15477ba555c8d476e6dd8371708632bf74e1ae4594759739cc5732874ea11a99.
 
-Current goal (user request): the input box shrank after a response and the input
-started on a new line under `You [model] >`. Make the box a stable size (3-4
-lines) and put the input on the same line as the prompt.
+Current goal (user request): mode-aware shortcuts, with Ctrl+B/Ctrl+F paging the
+transcript in both insert and normal mode.
 
 Changes in `src/ai_chat/ui.py`:
 
-- The editor height is no longer `min=1`: it is 3 lines for an empty or short
-  draft and grows to 4 for longer wrapped drafts
-  (`Dimension(min=3, preferred=visible_lines, max=visible_lines)`). Because the
-  max equals the preferred size, the layout can no longer inflate the box when
-  the transcript is short, and it never shrinks below three lines once the
-  transcript grows. Wrapped-line counting subtracts the inline prompt width.
-- The prompt is rendered inline with `Window(get_line_prefix=...)` instead of a
-  separate window, so `You [model] > message` is one line and wrapped or
-  continuation lines align under the first input column. The standalone prompt
-  window was removed from the root layout and `_viewport_height` was updated.
-- `_line_prefix` renders the prompt on `(lineno, wrap_count) == (0, 0)` and
-  spaces of the prompt width on later lines.
+- Ctrl+B and Ctrl+F scroll a full transcript page up/down in both modes (page =
+  viewport minus two lines, matching PgUp/PgDn).
+- Ctrl+U clears the current line in insert/replace mode and scrolls half a page
+  up in normal mode.
+- Ctrl+D is a no-op in insert/replace mode and scrolls half a page down in
+  normal mode. This intentionally removes the old "Ctrl+D at an empty prompt
+  exits" behavior; `/exit` and Ctrl+C still exit.
+- Ctrl+E moves to the end of the current line in insert/replace mode and does
+  nothing in normal mode.
+- Added `_page_lines`/`_half_page_lines` helpers and an `editing_modes` filter
+  (`vi_insert_mode | vi_insert_multiple_mode | vi_replace_mode`) so each key can
+  dispatch on insert vs navigation mode. All new bindings are eager app-level
+  bindings, so they override prompt_toolkit's default Vi page navigation.
 
-Tests: full suite 105 passed, Ruff and diff checks clean (the existing
-scroll/wrap/resize tests still pass because the box keeps a three-line floor and
-its old growth for long drafts).
+Tests: added coverage for Ctrl+B/F in both modes, Ctrl+U half-page in normal
+mode, Ctrl+D no-op (including not exiting at an empty prompt) plus half-page in
+normal mode, and Ctrl+E end-of-line plus normal-mode no-op. Updated the idle-exit
+test to Ctrl+C only and the README key list. Full suite 108 passed, Ruff and diff
+checks clean.
 
-Validation: commit 990fb92; full suite 105 passed, Ruff and diff checks clean.
-Actions https://github.com/cainiaocome/py/actions/runs/37837153963 succeeded.
-Published image ghcr.io/cainiaocome/py:latest digest
-sha256:15477ba555c8d476e6dd8371708632bf74e1ae4594759739cc5732874ea11a99. A
-real-PTY run of that image confirmed the prompt and typing share one line
-(`You [dummy] > hello`), continuation lines align under the first input column,
-and after filling the transcript with a long submitted message the empty input
-box stays exactly three rows at the same screen position. Preserve .env, user
-commit 3d8421e and home files. No system packages installed.
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
+3d8421e and home files. No system packages installed.

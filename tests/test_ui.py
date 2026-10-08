@@ -279,6 +279,153 @@ async def test_ctrl_u_clears_line_content_in_insert_mode():
 
 
 @pytest.mark.asyncio
+async def test_ctrl_b_and_ctrl_f_page_in_insert_and_normal_mode():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+        assert terminal.ui.following_tail
+
+        terminal.send("\x02")  # Ctrl+B in insert mode
+        await terminal.wait_for(
+            lambda: not terminal.ui.following_tail and terminal.ui.scroll_offset > 0,
+            "insert Ctrl+B pages up",
+        )
+        insert_offset = terminal.ui.scroll_offset
+        terminal.send("\x06")  # Ctrl+F in insert mode
+        await terminal.wait_for(
+            lambda: (
+                terminal.ui.following_tail or terminal.ui.scroll_offset > insert_offset
+            ),
+            "insert Ctrl+F pages down",
+        )
+
+        terminal.send("\x1b")
+        await terminal.wait_for(
+            lambda: terminal.ui.app.vi_state.input_mode == InputMode.NAVIGATION,
+            "normal mode",
+        )
+        terminal.send("\x02")
+        await terminal.wait_for(
+            lambda: not terminal.ui.following_tail and terminal.ui.scroll_offset > 0,
+            "normal Ctrl+B pages up",
+        )
+        normal_offset = terminal.ui.scroll_offset
+        terminal.send("\x06")
+        await terminal.wait_for(
+            lambda: (
+                terminal.ui.following_tail or terminal.ui.scroll_offset > normal_offset
+            ),
+            "normal Ctrl+F pages down",
+        )
+
+
+@pytest.mark.asyncio
+async def test_ctrl_u_half_page_up_in_normal_mode():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+        terminal.send("\x1b")
+        await terminal.wait_for(
+            lambda: terminal.ui.app.vi_state.input_mode == InputMode.NAVIGATION,
+            "normal mode",
+        )
+        terminal.send("\x15")  # Ctrl+U half page up in normal mode
+        await terminal.wait_for(
+            lambda: not terminal.ui.following_tail and terminal.ui.scroll_offset > 0,
+            "normal Ctrl+U half page up",
+        )
+
+
+@pytest.mark.asyncio
+async def test_ctrl_d_insert_noop_and_normal_half_page_down():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+
+        # Insert mode at an empty prompt: Ctrl+D must neither exit nor edit.
+        terminal.send("\x04")
+        await asyncio.sleep(0.2)
+        assert terminal.ui.app.is_running
+        assert terminal.ui.waiting_for_input
+        assert terminal.ui.buffer.text == ""
+
+        terminal.send("draft")
+        await terminal.wait_for(lambda: terminal.ui.buffer.text == "draft", "draft")
+        terminal.send("\x04")
+        await asyncio.sleep(0.2)
+        assert terminal.ui.buffer.text == "draft"
+        assert terminal.ui.app.is_running
+        terminal.send("\x15")
+        await terminal.wait_for(lambda: terminal.ui.buffer.text == "", "cleared")
+
+        # Normal mode: Ctrl+D scrolls the transcript half a page down.
+        terminal.send("\x1b")
+        await terminal.wait_for(
+            lambda: terminal.ui.app.vi_state.input_mode == InputMode.NAVIGATION,
+            "normal mode",
+        )
+        terminal.send("\x02")
+        await terminal.wait_for(
+            lambda: not terminal.ui.following_tail and terminal.ui.scroll_offset > 0,
+            "normal Ctrl+B pages up",
+        )
+        up_offset = terminal.ui.scroll_offset
+        terminal.send("\x04")
+        await terminal.wait_for(
+            lambda: terminal.ui.following_tail or terminal.ui.scroll_offset > up_offset,
+            "normal Ctrl+D half page down",
+        )
+
+
+@pytest.mark.asyncio
+async def test_ctrl_e_insert_end_of_line_and_normal_noop():
+    chat = FakeChat()
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("hello world")
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.text == "hello world", "typed text"
+        )
+        terminal.ui.buffer.cursor_position = 5
+        await asyncio.sleep(0.1)
+        assert terminal.ui.buffer.cursor_position == 5
+        terminal.send("\x05")  # Ctrl+E
+        await terminal.wait_for(
+            lambda: terminal.ui.buffer.cursor_position == len("hello world"),
+            "insert Ctrl+E goes to line end",
+        )
+
+        # Normal mode with a longer buffer: the default binding would move the
+        # cursor down, so Ctrl+E must leave it at the top of the buffer.
+        terminal.ui.buffer.text = "\n".join(f"line {index}" for index in range(8))
+        terminal.send("\x1b")
+        await terminal.wait_for(
+            lambda: terminal.ui.app.vi_state.input_mode == InputMode.NAVIGATION,
+            "normal mode",
+        )
+        terminal.ui.buffer.cursor_position = 0
+        await asyncio.sleep(0.1)
+        terminal.send("\x05")
+        await asyncio.sleep(0.2)
+        assert terminal.ui.buffer.cursor_position == 0
+        assert terminal.ui.buffer.document.cursor_position_row == 0
+
+
+@pytest.mark.asyncio
 async def test_escape_enters_normal_mode_without_a_long_delay():
     chat = FakeChat()
     async with running_ui(chat, width=72, height=14) as terminal:
@@ -768,12 +915,12 @@ async def test_model_picker_cancel_and_ctrl_c_while_model_list_is_waiting():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("key", ["\x03", "\x04"], ids=["ctrl-c", "ctrl-d"])
-async def test_idle_exit_restores_terminal_and_prints_goodbye_once(key):
+@pytest.mark.asyncio
+async def test_idle_ctrl_c_restores_terminal_and_prints_goodbye_once():
     chat = FakeChat()
     async with running_ui(chat, width=72, height=16) as terminal:
         terminal.sync()
-        terminal.send(key)
+        terminal.send("\x03")
         await terminal.wait_for(lambda: terminal.task.done(), "clean application exit")
         raw_terminal = terminal.output_stream.getvalue()
         assert "\x1b[?1049h" in raw_terminal

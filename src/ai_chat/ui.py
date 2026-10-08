@@ -19,6 +19,8 @@ from prompt_toolkit.filters import (
     Condition,
     has_completions,
     vi_insert_mode,
+    vi_insert_multiple_mode,
+    vi_navigation_mode,
     vi_replace_mode,
 )
 from prompt_toolkit.formatted_text import ANSI, FormattedText, split_lines
@@ -420,28 +422,27 @@ class TerminalUI:
                 self._controller_task.cancel()
                 self._set_status("Cancelling model selection…")
 
-        @bindings.add(
-            "c-d",
-            filter=Condition(lambda: self.waiting_for_input and not self.buffer.text),
-            eager=True,
-        )
-        def eof(event) -> None:
-            if not event.current_buffer.text and self.waiting_for_input:
-                assert self._pending_prompt is not None
-                self._pending_prompt.set_exception(EOFError())
-                self._set_status("Exiting…")
+        @bindings.add("c-b", eager=True)
+        def page_up_both(event) -> None:
+            del event
+            self._scroll_back(self._page_lines())
+
+        @bindings.add("c-f", eager=True)
+        def page_down_both(event) -> None:
+            del event
+            self._scroll_forward(self._page_lines())
 
         @bindings.add("pageup", eager=True)
         @bindings.add("c-pageup", eager=True)
         def page_up(event) -> None:
             del event
-            self._scroll_back(max(1, self._viewport_height() - 2))
+            self._scroll_back(self._page_lines())
 
         @bindings.add("pagedown", eager=True)
         @bindings.add("c-pagedown", eager=True)
         def page_down(event) -> None:
             del event
-            self._scroll_forward(max(1, self._viewport_height() - 2))
+            self._scroll_forward(self._page_lines())
 
         @bindings.add("tab", eager=True)
         def complete_command(event) -> None:
@@ -467,14 +468,38 @@ class TerminalUI:
         def previous_completion(event) -> None:
             self._cycle_completions(-1)
 
-        @bindings.add("c-u", filter=vi_insert_mode | vi_replace_mode, eager=True)
+        editing_modes = vi_insert_mode | vi_insert_multiple_mode | vi_replace_mode
+
+        @bindings.add("c-u", filter=editing_modes, eager=True)
         def clear_line(event) -> None:
-            # Vim half-page scrolling shadows the readline binding in full-screen
-            # apps; insert mode should discard from the cursor to line start.
+            # Insert-mode Ctrl+U discards from the cursor to the line start.
             buffer = event.current_buffer
             start = -buffer.document.get_start_of_line_position()
             if start > 0:
                 buffer.delete_before_cursor(count=start)
+
+        @bindings.add("c-u", filter=vi_navigation_mode, eager=True)
+        def half_page_up(event) -> None:
+            del event
+            self._scroll_back(self._half_page_lines())
+
+        @bindings.add("c-d", filter=editing_modes, eager=True)
+        def ignore_ctrl_d(event) -> None:
+            del event
+
+        @bindings.add("c-d", filter=vi_navigation_mode, eager=True)
+        def half_page_down(event) -> None:
+            del event
+            self._scroll_forward(self._half_page_lines())
+
+        @bindings.add("c-e", filter=editing_modes, eager=True)
+        def end_of_line(event) -> None:
+            buffer = event.current_buffer
+            buffer.cursor_position += buffer.document.get_end_of_line_position()
+
+        @bindings.add("c-e", filter=vi_navigation_mode, eager=True)
+        def ignore_ctrl_e(event) -> None:
+            del event
 
         @bindings.add(
             "end", filter=Condition(lambda: not self._follow_tail), eager=True
@@ -609,6 +634,12 @@ class TerminalUI:
         if self._follow_tail:
             return max(0, self._line_count - 1)
         return self._scroll_offset
+
+    def _page_lines(self) -> int:
+        return max(1, self._viewport_height() - 2)
+
+    def _half_page_lines(self) -> int:
+        return max(1, self._viewport_height() // 2)
 
     def _scroll_back(self, amount: int) -> None:
         height = self._viewport_height()
