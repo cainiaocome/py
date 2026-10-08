@@ -30,6 +30,13 @@ normal mode, and Ctrl+E end-of-line plus normal-mode no-op. Updated the idle-exi
 test to Ctrl+C only and the README key list. Full suite 108 passed, Ruff and diff
 checks clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
-3d8421e and home files. No system packages installed.
+Validation: commit aa6668f; full suite 108 passed, Ruff and diff checks clean.
+Actions https://github.com/cainiaocome/py/actions/runs/37854497232 succeeded.
+Published image ghcr.io/cainiaocome/py:latest digest
+sha256:f57bd070fa722a91c6749f00e76f653971630b59a17f6374575335f3c8173b8b. A
+real-PTY run of that image confirmed: Ctrl+B/Ctrl+F page the transcript in both
+insert and normal mode, normal Ctrl+U scrolls half a page up and normal Ctrl+D
+returns half a page down, normal Ctrl+E is a no-op, insert Ctrl+E moves to the
+line end (typing after it appended to `hello!`), insert Ctrl+D neither exited nor
+edited, and insert Ctrl+U cleared the line. Preserve .env, user commit 3d8421e
+and home files. No system packages installed.
