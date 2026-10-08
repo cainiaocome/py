@@ -194,9 +194,6 @@ class TerminalUI:
         self.buffer.on_text_changed += self._on_text_changed
         self.buffer.on_cursor_position_changed += self._on_buffer_changed
 
-        self._prompt_control = FormattedTextControl(
-            self._prompt_text, focusable=False, show_cursor=False
-        )
         self._buffer_control = BufferControl(buffer=self.buffer, focusable=True)
         self._transcript_control = TranscriptControl(self)
         self.transcript_window = Window(
@@ -212,6 +209,7 @@ class TerminalUI:
             content=self._buffer_control,
             wrap_lines=True,
             height=self._editor_dimension,
+            get_line_prefix=self._line_prefix,
             style="class:editor",
         )
         self._footer_window = Window(
@@ -223,7 +221,6 @@ class TerminalUI:
             [
                 self.transcript_window,
                 Window(height=1, char="─", style="class:divider"),
-                Window(self._prompt_control, height=1, style="class:prompt"),
                 self._editor_window,
                 self._footer_window,
             ]
@@ -535,8 +532,12 @@ class TerminalUI:
             self.buffer.start_completion()
         self._changed()
 
-    def _prompt_text(self) -> FormattedText:
-        return FormattedText([("class:prompt", self._prompt_label)])
+    def _line_prefix(self, lineno: int, wrap_count: int) -> FormattedText:
+        """Render the prompt inline before the first input line."""
+        if lineno == 0 and wrap_count == 0:
+            return FormattedText([("class:prompt", self._prompt_label)])
+        # Keep wrapped and continuation lines aligned under the first column.
+        return FormattedText([("class:prompt", " " * get_cwidth(self._prompt_label))])
 
     def _footer_text(self) -> FormattedText:
         mode = "INSERT"
@@ -555,13 +556,18 @@ class TerminalUI:
         return FormattedText(pieces)
 
     def _editor_dimension(self) -> Dimension:
+        # Keep a stable input box (3 lines for a short or empty draft) that grows
+        # to at most 4 lines for longer drafts, so the layout does not shrink
+        # after a response once the transcript grows. The prompt prefix reduces
+        # the usable width, so account for it when counting wrapped lines.
         columns = max(1, self._output.get_size().columns)
+        available = max(1, columns - get_cwidth(self._prompt_label))
         visual_lines = 0
         for line in self.buffer.text.split("\n"):
             line_width = sum(get_cwidth(character) for character in line)
-            visual_lines += max(1, (line_width + columns - 1) // columns)
-        visible_lines = min(5, max(1, visual_lines))
-        return Dimension(min=1, preferred=visible_lines, max=5)
+            visual_lines += max(1, (line_width + available - 1) // available)
+        visible_lines = min(4, max(3, visual_lines))
+        return Dimension(min=3, preferred=visible_lines, max=visible_lines)
 
     def _transcript_width(self) -> int:
         return max(1, self._output.get_size().columns)
@@ -571,8 +577,8 @@ class TerminalUI:
         rows = max(1, self._output.get_size().rows)
         editor = self._editor_dimension().preferred
         editor_lines = max(1, editor) if isinstance(editor, int) else 1
-        # The transcript shares the screen with divider, prompt, editor and footer.
-        return max(1, rows - (1 + 1 + editor_lines + 1))
+        # The transcript shares the screen with divider, editor and footer.
+        return max(1, rows - (1 + editor_lines + 1))
 
     def _max_scroll_offset(self, height: int) -> int:
         self._transcript_text()  # Refresh the measured line count.

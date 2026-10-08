@@ -46,7 +46,9 @@ only and logs an error if either required value is missing or blank. Keep
 - Vim editing is enabled by default; press `i` to enter insert mode, Esc for normal mode.
   The cursor is a beam in Insert mode, a block in Normal mode, and an underline
   in Replace mode (requires a terminal that supports cursor shape changes).
-- The input stays pinned below the conversation and expands for multiline drafts.
+- The prompt and your typing share one line (`You [model] > message`), so the
+  input starts right after the prompt. The box keeps a stable three-line height
+  and grows to four lines for longer, wrapped drafts.
 - Enter sends the message; Alt+Enter inserts a newline. Esc leaves insert
   mode immediately.
 - Ctrl+U clears the current input line.

@@ -1,41 +1,33 @@
-# AI CLI Chat — command palette
+# AI CLI Chat — input layout
 
-Previous request complete: /clear clears the displayed transcript, Escape leaves
-insert mode promptly, Ctrl+U clears the input line. 103 tests; commits
-46ff481/c6c2b92, Actions https://github.com/cainiaocome/py/actions/runs/37833970128,
-published image digest
-sha256:35a1f013ab1491fb459e7d65c106772d1a1879be57285c62c20267c9fa44b90c.
+Previous requests complete: live slash command palette plus the earlier input UX
+fixes. 105 tests; commits 2870236/995a0f3, Actions
+https://github.com/cainiaocome/py/actions/runs/37835460727, published image digest
+sha256:c61a15f51af2e3e3f47b5d59ec5efe597f9263310c07a5e7a8e924cd1c9bafc1.
 
-Current goal (user request): when input starts with `/`, behave like Claude Code
-or Codex — show command candidates and update them as the user types.
+Current goal (user request): the input box shrank after a response and the input
+started on a new line under `You [model] >`. Make the box a stable size (3-4
+lines) and put the input on the same line as the prompt.
 
-Design and changes:
+Changes in `src/ai_chat/ui.py`:
 
-- `CommandCompleter` now attaches a `display_meta` description to each candidate
-  (`/clear`, `/exit`, `/model`, `/enable-web-search-and-web-fetch`).
-- The full-screen editor enables `complete_while_typing`, so the existing
-  `CompletionsMenu` float opens automatically for `/` and re-filters on each
-  keystroke. Meta styles were added for readable descriptions.
-- prompt_toolkit only auto-completes on insertion, so a text-changed handler
-  rebuilds the palette after deletions (applying a completion only grows text,
-  so it never re-triggers).
-- Up/Down and Tab navigate candidates; a helper cycles with wrap-around instead
-  of prompt_toolkit's default `complete_next`, which reverts to the typed prefix
-  past the last item. Tab computes candidates synchronously so it cannot be
-  raced by the per-keystroke automatic completion.
-- Enter submits the current text; selecting a candidate first inserts it, then
-  Enter runs it. Normal Vi half-page scrolling (Ctrl+U outside insert/replace)
-  is unchanged.
+- The editor height is no longer `min=1`: it is 3 lines for an empty or short
+  draft and grows to 4 for longer wrapped drafts
+  (`Dimension(min=3, preferred=visible_lines, max=visible_lines)`). Because the
+  max equals the preferred size, the layout can no longer inflate the box when
+  the transcript is short, and it never shrinks below three lines once the
+  transcript grows. Wrapped-line counting subtracts the inline prompt width.
+- The prompt is rendered inline with `Window(get_line_prefix=...)` instead of a
+  separate window, so `You [model] > message` is one line and wrapped or
+  continuation lines align under the first input column. The standalone prompt
+  window was removed from the root layout and `_viewport_height` was updated.
+- `_line_prefix` renders the prompt on `(lineno, wrap_count) == (0, 0)` and
+  spaces of the prompt width on later lines.
 
-Tests added: palette lists all commands and descriptions, filters while typing,
-hides on no match and rebuilds after deletion, Down selects and Enter runs, Tab
-completes a prefix. Full suite 105 passed, Ruff and diff checks clean.
+Tests: full suite 105 passed, Ruff and diff checks clean (the existing
+scroll/wrap/resize tests still pass because the box keeps a three-line floor and
+its old growth for long drafts).
 
-Validation: commit 995a0f3; full suite 105 passed, Ruff and diff checks clean.
-Actions https://github.com/cainiaocome/py/actions/runs/37835460727 passed test and
-image jobs. Published image ghcr.io/cainiaocome/py:latest digest
-sha256:c61a15f51af2e3e3f47b5d59ec5efe597f9263310c07a5e7a8e924cd1c9bafc1. A
-real-PTY run of that image confirmed the palette opens on `/` with descriptions,
-filters while typing, rebuilds after deletion, Tab completes a prefix and runs
-the command, and Down selects then Enter runs a candidate. Preserve .env, user
-commit 3d8421e and home files. No system packages installed.
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
+3d8421e and home files. No system packages installed.
