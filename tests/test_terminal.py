@@ -55,10 +55,6 @@ class Chat:
         if prompt == "web" and on_activity:
             on_activity("Searching the web…")
             on_activity("Fetching page…")
-        if prompt == "limit":
-            from pydantic_ai.exceptions import UsageLimitExceeded
-
-            raise UsageLimitExceeded("limit")
         yield "**hello**"
 
 
@@ -172,16 +168,13 @@ def test_command_completion():
     assert complete("/model other") == []
 
 
-async def test_tool_activity_and_limit_recovery():
+async def test_tool_activity_and_followup():
     output = StringIO()
     chat = Chat()
-    await run_chat(
-        chat, Session("web", "limit", "hello", "/exit"), Console(file=output)
-    )
+    await run_chat(chat, Session("web", "hello", "/exit"), Console(file=output))
     assert "Searching the web" in output.getvalue()
     assert "Fetching page" in output.getvalue()
-    assert "reached its tool or request limit" in output.getvalue()
-    assert chat.prompts == ["web", "limit", "hello"]
+    assert chat.prompts == ["web", "hello"]
 
 
 async def test_enable_web_command_is_local_and_idempotent():

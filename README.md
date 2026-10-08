@@ -93,10 +93,11 @@ session history; `/clear` resets them together with the conversation.
 Each web request has a 30-second deadline. Search defaults to five results
 (maximum ten), and each search/fetch result is bounded to 20,000 content
 characters with a truncation flag. Page results also include at most 20 links.
-A turn allows at most ten tool calls and fifteen model requests. Reaching a
-limit stops the turn with a message; failed or interrupted turns do not update
-history. Authentication errors, rate limits, timeouts, unavailable pages, and
-malformed responses are returned to the model as short error messages.
+There is no per-turn cap on tool calls or model requests; research continues
+until the model finishes or you interrupt it with Ctrl+C. Failed or interrupted
+turns do not update history. Authentication errors, rate limits, timeouts,
+unavailable pages, and malformed responses are returned to the model as short
+error messages.
 Credentials and page contents are not logged. Python still reads configuration
 only from environment variables; the launcher alone loads the optional `.env`.
 

@@ -100,7 +100,8 @@ class Chat:
         async with self.agent.iter(
             prompt,
             message_history=list(self.history),
-            usage_limits=UsageLimits(tool_calls_limit=10, request_limit=15),
+            # Explicit None also disables Pydantic AI's default request cap.
+            usage_limits=UsageLimits(tool_calls_limit=None, request_limit=None),
         ) as run:
             async for node in run:
                 if Agent.is_model_request_node(node):

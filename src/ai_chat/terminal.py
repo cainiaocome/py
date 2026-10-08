@@ -9,7 +9,6 @@ from prompt_toolkit.cursor_shapes import ModalCursorShapeConfig
 from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
-from pydantic_ai.exceptions import UsageLimitExceeded
 from rich.console import Console, ConsoleOptions, RenderResult
 from rich.live import Live
 from rich.markdown import Markdown
@@ -125,10 +124,6 @@ async def run_chat(chat: Chat, session: PromptSession, console: Console) -> None
             if current is not None:
                 current.uncancel()
             console.print("[yellow]Response interrupted.[/yellow]")
-        except UsageLimitExceeded:
-            console.print(
-                "[yellow]Web research stopped: this turn reached its tool or request limit. Try a narrower question.[/yellow]"
-            )
         except Exception as exc:  # noqa: BLE001 - recover at the interactive UI boundary
             # Do not log provider exception bodies: they can contain private input.
             logger.warning("Chat request failed ({})", type(exc).__name__)

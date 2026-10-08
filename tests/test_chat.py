@@ -148,30 +148,36 @@ async def test_mixed_text_search_fetch_and_followup_history():
     assert chat.history == []
 
 
-async def test_tool_loop_is_bounded_without_committing_history():
-    from pydantic_ai.exceptions import UsageLimitExceeded
+async def test_research_can_exceed_previous_and_framework_default_limits():
     from pydantic_ai.models.function import DeltaToolCall
 
     calls = []
+    requests = 0
 
     async def web_search(query: str) -> str:
         calls.append(query)
         return "Found a result"
 
     async def stream(messages, info):
-        yield {
-            0: DeltaToolCall(
-                name="web_search",
-                json_args='{"query":"again"}',
-                tool_call_id=f"call-{len(calls)}",
-            )
-        }
+        nonlocal requests
+        requests += 1
+        if len(calls) < 55:
+            yield {
+                0: DeltaToolCall(
+                    name="web_search",
+                    json_args='{"query":"next source"}',
+                    tool_call_id=f"call-{len(calls)}",
+                )
+            }
+        else:
+            yield "Research complete."
 
     chat = Chat(Agent(FunctionModel(stream_function=stream), tools=[web_search]))
-    with pytest.raises(UsageLimitExceeded):
-        _ = [text async for text in chat.stream("Search forever")]
-    assert len(calls) == 10
-    assert chat.history == []
+    chunks = [text async for text in chat.stream("Research many sources")]
+    assert chunks[-1] == "Research complete."
+    assert len(calls) == 55
+    assert requests == 56
+    assert len(chat.history) == 112
 
 
 async def test_cancelled_tool_preserves_history():
