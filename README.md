@@ -39,6 +39,8 @@ only and logs an error if either required value is missing or blank. Keep
 `.env` private; it is ignored by Git and loaded only by the launcher.
 
 - Vim editing is enabled by default; press `i` to enter insert mode, Esc for normal mode.
+  The cursor is a beam in Insert mode, a block in Normal mode, and an underline
+  in Replace mode (requires a terminal that supports cursor shape changes).
 - Enter sends the message; Alt+Enter adds a newline (Esc then Enter also works).
 - The active model is shown at startup, in the input prompt, and above each response.
 - `/model` lists Cloud models; choose a number or enter a name (Enter cancels).

@@ -5,6 +5,7 @@ import asyncio
 from loguru import logger
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer, Completion
+from prompt_toolkit.cursor_shapes import ModalCursorShapeConfig
 from prompt_toolkit.enums import EditingMode
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.key_binding import KeyBindings
@@ -53,6 +54,7 @@ def key_bindings() -> KeyBindings:
 def create_session() -> PromptSession:
     return PromptSession(
         editing_mode=EditingMode.VI,
+        cursor=ModalCursorShapeConfig(),
         multiline=True,
         history=InMemoryHistory(),
         completer=CommandCompleter(),
