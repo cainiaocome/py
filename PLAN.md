@@ -32,6 +32,12 @@ short configured timeouts; `/clear` leaves only the confirmation entry; `on_clea
 callback invoked by `run_chat`. Full suite 103 passed, Ruff and diff checks clean.
 Alt+Enter multiline input remains covered by the existing Vim test.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
-3d8421e and home files. No system packages installed.
+Validation: commit 46ff481; full suite 103 passed, Ruff and diff checks clean;
+UI tests stable across 5 CPU-contended runs. Actions
+https://github.com/cainiaocome/py/actions/runs/37833970128 passed test and image
+jobs. Published image ghcr.io/cainiaocome/py:latest digest
+sha256:35a1f013ab1491fb459e7d65c106772d1a1879be57285c62c20267c9fa44b90c. A
+real-PTY run of that image confirmed Ctrl+U clears the input line, Escape leaves
+insert mode promptly (~0.1-0.3s) while Alt+Enter still works, and `/clear`
+removes the displayed conversation. Preserve .env, user commit 3d8421e and home
+files. No system packages installed.
