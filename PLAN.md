@@ -26,6 +26,15 @@ Changes:
 
 Full suite 110 passed, Ruff and diff checks clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow). Preserve .env, user commit
-3d8421e and home files. No system packages installed.
+Validation: commit 5a85401; full suite 110 passed. Actions
+https://github.com/cainiaocome/py/actions/runs/37857380433 succeeded. Published
+image ghcr.io/cainiaocome/py:latest digest
+sha256:e40e95c7934417532575eea23e8f63bfa88cdea012f7ce0e1bbb41d5c90b4607. A
+real-PTY run of that image confirmed Ctrl+D scrolls half a page down in insert
+and normal mode, is a no-op at the bottom without exiting, preserves a typed
+draft, and Ctrl+C remains the clean exit path (exit code 0).
+
+Follow-up docs: README now documents the key bindings in dedicated tables
+(`## Key bindings` with editing/mode-aware/scrolling tables, plus a `## Commands`
+table). Preserve .env, user commit 3d8421e and home files. No system packages
+installed.

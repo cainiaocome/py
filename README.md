@@ -43,37 +43,68 @@ model name (default example: `gpt-oss:20b`). Requests use
 only and logs an error if either required value is missing or blank. Keep
 `.env` private; it is ignored by Git and loaded only by the launcher.
 
-- Vim editing is enabled by default; press `i` to enter insert mode, Esc for normal mode.
-  The cursor is a beam in Insert mode, a block in Normal mode, and an underline
-  in Replace mode (requires a terminal that supports cursor shape changes).
-- The prompt and your typing share one line (`You [model] > message`), so the
-  input starts right after the prompt. The box keeps a stable three-line height
-  and grows to four lines for longer, wrapped drafts.
-- Enter sends the message; Alt+Enter inserts a newline. Esc leaves insert
-  mode immediately.
-- Mode-aware shortcuts: Ctrl+U clears the current line (insert) or scrolls half
-  a page up (normal); an empty insert prompt also scrolls half a page up. Ctrl+D
-  always scrolls half a page down, in both insert and normal mode. Ctrl+E moves
-  to the end of the line (insert) or does nothing (normal).
-- Ctrl+B and Ctrl+F scroll a full page up and down in both insert and normal mode.
-- You can draft the next message while the assistant responds. Enter preserves
-  that draft until the response finishes; Ctrl+C interrupts the response.
-- PgUp/PgDn or the mouse wheel scroll the conversation without moving input.
-  End while scrolled up, or Ctrl+End, returns to following new output. Submitting
-  a new message also resumes following; incoming tokens alone do not.
-- The active model is shown at startup, in the input prompt, and above each response.
-- `/model` lists Cloud models; choose a number or enter a name (Enter cancels).
-- `/model <name>` switches directly. Switching retains conversation context and
-  applies only to this session; `.env` is unchanged. Model availability is checked
-  by Ollama when you send your next message.
-- `/enable-web-search-and-web-fetch` enables both web tools for this session.
-- Typing `/` opens a live command palette with a description for each command. It
-  filters as you type; Up/Down or Tab select a candidate and Enter runs it.
-- `/clear` resets model context and clears the displayed conversation; input
-  history remains available within the session.
-- `/exit` or Ctrl+C at the prompt exits. Ctrl+D never exits, so scrolling can
-  never quit the program by accident.
-- Ctrl+C during a response cancels it and returns to the prompt.
+## Key bindings
+
+Vim editing is enabled by default. Press `i` to enter insert mode and Esc for
+normal mode. The cursor is a beam in insert mode, a block in normal mode, and an
+underline in replace mode (terminals with cursor-shape support). The prompt and
+your typing share one line (`You [model] > message`); the input box keeps a
+stable three-line height and grows to four lines for wrapped drafts.
+
+### Editing and submission
+
+| Key | Action |
+| --- | --- |
+| `Enter` | Send the message. While a response is streaming, keep the draft instead. |
+| `Alt+Enter` | Insert a newline. |
+| `Esc` | Leave insert or replace mode (Vim normal mode). |
+| `i` | Enter insert mode. |
+| `Tab`, `Down`, `Up` | Accept or cycle live command candidates. |
+| `Ctrl+C` | At the prompt, exit; while streaming, interrupt the response. |
+
+### Mode-aware shortcuts
+
+Insert and replace mode edit text; normal mode moves around. The same key can do
+different things in each:
+
+| Key | Insert or replace mode | Normal mode |
+| --- | --- | --- |
+| `Ctrl+U` | Clear from the cursor to the start of the line. With an empty prompt, scroll half a page up instead. | Scroll half a page up. |
+| `Ctrl+D` | Scroll half a page down. | Scroll half a page down. |
+| `Ctrl+E` | Move the cursor to the end of the current line. | Do nothing. |
+
+### Transcript scrolling
+
+| Key | Action |
+| --- | --- |
+| `Ctrl+B`, `PgUp`, `Ctrl+PgUp` | Scroll up one full page. |
+| `Ctrl+F`, `PgDn`, `Ctrl+PgDn` | Scroll down one full page. |
+| Mouse wheel | Scroll three lines. |
+| `End`, `Ctrl+End` | Resume following the newest output. |
+
+Submitting a new message also resumes following. Incoming tokens alone do not
+move a paused view.
+
+`Ctrl+D` never exits, in any mode, so scrolling to the end of a long answer
+cannot quit the program by accident. Use `/exit` or `Ctrl+C` at the prompt to
+leave.
+
+## Commands
+
+Type `/` at an empty prompt to open a live command palette; it filters as you
+type and shows a description for each command. `Up`/`Down` or `Tab` select a
+candidate and `Enter` runs it.
+
+| Command | Description |
+| --- | --- |
+| `/clear` | Reset the model context and clear the displayed conversation. Input history remains available within the session. |
+| `/model` | List Cloud models; enter a number or name, or press Enter to cancel. |
+| `/model <name>` | Switch directly. Conversation context is retained and `.env` is unchanged. Model availability is checked by Ollama on the next message. |
+| `/enable-web-search-and-web-fetch` | Enable both web tools for this session. |
+| `/exit` | Exit the chat. |
+
+The active model is shown at startup, in the input prompt, and above each
+response.
 
 Interactive terminals use a full-screen layout with a scrollable Rich Markdown
 transcript and a fixed input area. Streaming and interrupted replies remain in
