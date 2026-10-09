@@ -165,5 +165,11 @@ Results (same benchmarks):
   (~5800 lines), mean transcript frame 2.5 ms, worst 5.0 ms (was effectively
   ~3 FPS). Full suite 117 passed, Ruff and diff checks clean.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow).
+Validation: commit 6fc8df4; full suite 117 passed. Actions
+https://github.com/cainiaocome/py/actions/runs/37864220694 succeeded. Published
+image ghcr.io/cainiaocome/py:latest digest
+sha256:45276bdba709403aeb6d541b4953be2b5b45641e0e81ad90356c715bc60d8ffc. A
+real-PTY run of that image (distinct wrapped lines) measured 17 ms median scroll
+latency per wheel tick (p95 18 ms), a 20-tick burst settling in 24 ms, and all
+scrolling/navigation keys (j/k, gg/p/n/G, Ctrl+U/Ctrl+D) still working with a
+clean Ctrl+C exit.
