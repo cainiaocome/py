@@ -206,3 +206,23 @@ checks of that image still pass (17 ms median scroll latency, j/k, gg/p/n/G,
 Ctrl+U/Ctrl+D, clean Ctrl+C). The throttle itself is covered by the new unit
 test; the dummy Cloud key fails before any chunk so the live path cannot stream
 in the image.
+
+## Normal-mode u / d / Space scrolling keys
+
+User request: make transcript navigation easy from normal mode.
+
+- `u` scrolls half a page up (same as `Ctrl+U` in normal mode).
+- `d` scrolls half a page down (same as `Ctrl+D`).
+- `Space` scrolls down one full page.
+
+Implementation: three eager `vi_navigation_mode` bindings in `ui.py` reusing
+`_half_page_lines()` / `_page_lines()`, documented in the README normal-mode
+navigation table, and covered by a new test.
+
+Validation: commit 62ca6f9; full suite 119 passed. Actions
+https://github.com/cainiaocome/py/actions/runs/37866230435 succeeded. Published
+image ghcr.io/cainiaocome/py:latest digest
+sha256:a9a78ff311df0079f9cde871c9adf19592cdd0eb358b4988934284794b809079. A real-PTY
+run of that image scrolled to the top (`k`), then measured distinct line tokens:
+top=0, `d` (half page)=82, `u`=0 (exact reverse), `Space` (full page)=194, and a
+clean Ctrl+C exit.
