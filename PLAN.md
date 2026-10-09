@@ -173,3 +173,30 @@ real-PTY run of that image (distinct wrapped lines) measured 17 ms median scroll
 latency per wheel tick (p95 18 ms), a 20-tick burst settling in 24 ms, and all
 scrolling/navigation keys (j/k, gg/p/n/G, Ctrl+U/Ctrl+D) still working with a
 clean Ctrl+C exit.
+
+## Throttle the live streaming re-render
+
+Current goal (user request, follow-up #3 from the performance review): stop
+re-rendering the whole streamed answer on every chunk.
+
+Root cause: `render_response` set `entry.objects = (Markdown(text),)` and
+invalidated on every token. Rich Markdown re-rendering grows with the answer, so
+each frame cost O(answer so far); at 60 FPS that is noticeable CPU even though
+scrolling is now smooth.
+
+Changes:
+
+- `src/ai_chat/ui.py`: added `LIVE_REFRESH_INTERVAL = 0.05` and repaint the live
+  entry at most every 50 ms (the first chunk always paints, and
+  `finish_live_response` always paints the complete text on success, error, or
+  interrupt, so the final answer is never truncated).
+- `tests/test_ui.py`: new test streams 400 chunks and asserts the live entry is
+  repainted far fewer times than there are chunks while the final Markdown holds
+  the whole answer.
+
+Measured (200 chunks over ~1.2 s, 100x40): live repaints 93 -> 24, live render
+time 176 ms -> 43 ms (~10.5% -> 3.6% of a core); the stream also completed
+faster because the event loop spent less time rendering. Full suite 118 passed.
+
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow).

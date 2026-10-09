@@ -54,6 +54,11 @@ from rich.text import Text
 from ai_chat.chat import Chat
 from ai_chat.terminal import CommandCompleter, key_bindings, run_chat
 
+# Rebuild the live answer at most this often while it streams. Re-rendering Rich
+# Markdown grows with the answer, so repainting on every chunk wastes CPU; the
+# complete text is always painted once the stream finishes.
+LIVE_REFRESH_INTERVAL = 0.05
+
 
 @dataclass
 class TranscriptEntry:
@@ -372,10 +377,15 @@ class TerminalUI:
             target.add_activity(message)
 
         try:
+            last_paint: float | None = None
             async for text in chat.stream(prompt, on_activity=activity):
+                now = time.monotonic()
+                if last_paint is not None and now - last_paint < LIVE_REFRESH_INTERVAL:
+                    continue
                 entry.objects = (Markdown(text),)
                 entry.invalidate()
                 self._changed()
+                last_paint = now
         finally:
             target.finish_live_response(entry, text)
             if self._response_task is asyncio.current_task():

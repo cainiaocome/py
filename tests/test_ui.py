@@ -771,6 +771,36 @@ async def test_streaming_keeps_input_pinned_and_draft_survives_busy_enter():
 
 
 @pytest.mark.asyncio
+async def test_live_stream_repaints_are_throttled_but_finish_complete():
+    class ChunkedChat(FakeChat):
+        async def stream(self, prompt, *, on_activity=None):
+            self.prompts.append(prompt)
+            self._event(self.started, prompt).set()
+            for index in range(400):
+                yield "x" * (index + 1)
+            self.history.append(prompt)
+            self._event(self.finished, prompt).set()
+
+    chat = ChunkedChat()
+    async with running_ui(chat, width=72, height=14) as terminal:
+        ui = terminal.ui
+        terminal.send("chunky\r")
+        await terminal.wait_for(
+            lambda: "chunky" in chat.history and ui.waiting_for_input,
+            "chunked stream finished",
+        )
+        response = next(entry for entry in ui.entries if entry.live_response)
+        # 400 chunks arrive far faster than the refresh interval, so the live
+        # entry is repainted a handful of times instead of once per chunk.
+        assert response.revision < 50
+        # The final paint always contains the complete answer.
+        assert any(
+            isinstance(obj, Markdown) and "x" * 400 in obj.markup
+            for obj in response.objects
+        )
+
+
+@pytest.mark.asyncio
 async def test_follow_tail_pause_page_and_mouse_scrolling_then_end():
     chat = FakeChat()
     chat.responses["long"] = (long_markdown(), long_markdown())
