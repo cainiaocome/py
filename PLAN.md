@@ -198,5 +198,11 @@ Measured (200 chunks over ~1.2 s, 100x40): live repaints 93 -> 24, live render
 time 176 ms -> 43 ms (~10.5% -> 3.6% of a core); the stream also completed
 faster because the event loop spent less time rendering. Full suite 118 passed.
 
-Validation pending: Docker/real-PTY check, commit/push, Actions and published
-image verification (per AGENTS.md GitHub workflow).
+Validation: commit 1e256ef; full suite 118 passed. Actions
+https://github.com/cainiaocome/py/actions/runs/37865245310 succeeded. Published
+image ghcr.io/cainiaocome/py:latest digest
+sha256:051a460137d7b91e73ff8bf941d17ed9fa721e4375544e1c9d5d6f1afd1bab30. PTY
+checks of that image still pass (17 ms median scroll latency, j/k, gg/p/n/G,
+Ctrl+U/Ctrl+D, clean Ctrl+C). The throttle itself is covered by the new unit
+test; the dummy Cloud key fails before any chunk so the live path cannot stream
+in the image.
