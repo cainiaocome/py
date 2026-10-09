@@ -692,6 +692,40 @@ async def test_normal_mode_j_k_scroll_one_line():
 
 
 @pytest.mark.asyncio
+async def test_transcript_lines_are_cached_until_content_changes():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+        ui = terminal.ui
+        width = ui._transcript_width()
+
+        first = ui._transcript_lines(width)
+        # Every frame while scrolling reuses the assembled list and the cached
+        # per-entry split instead of re-splitting the whole transcript.
+        assert ui._transcript_lines(width) is first
+        assert ui._line_count == len(first)
+        entry = ui.entries[-1]
+        assert entry.lines(width) is entry.lines(width)
+        ui._scroll_back(3)
+        ui._scroll_forward(10)
+        assert ui._transcript_lines(width) is first
+
+        # A content change (as one streamed token does) rebuilds the assembly.
+        entry.invalidate()
+        second = ui._transcript_lines(width)
+        assert second is not first
+        assert ui._line_count == len(second)
+
+        # A new width rebuilds the per-entry split too.
+        assert ui._transcript_lines(width - 20) is not second
+
+
+@pytest.mark.asyncio
 async def test_streaming_keeps_input_pinned_and_draft_survives_busy_enter():
     chat = FakeChat()
     gate = asyncio.Event()

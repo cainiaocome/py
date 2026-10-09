@@ -126,3 +126,44 @@ sha256:b75a4a558dc450c89e6a7f21dc8bca73adb4c8b2321eb48e9157834870ad640c. A
 real-PTY run of that image confirmed two `k` presses pause the transcript, one
 `j` keeps it paused (one-line movement, not a page), the next `j` follows the
 tail again, and Ctrl+C still exits cleanly (code 0).
+
+## Smooth scrolling: cache transcript lines and raise the redraw rate
+
+Current goal (user request): make scrolling feel smooth. Profiling showed the
+transcript was re-split and re-measured on every frame (O(total transcript)),
+capped at ~12 FPS.
+
+Root cause and measurements (test virtual terminal, 100 cols):
+
+- `_transcript_text` + prompt_toolkit's `FormattedTextControl.create_content`
+  both ran `split_lines` over the whole transcript each render, and
+  `create_content` also hashed a `tuple` of every fragment. `split_lines` was
+  ~97% of render time.
+- Per-frame `create_content`: 6 ms (1 entry) → 61 ms (10) → 338 ms (50).
+  `min_redraw_interval=1/12` capped redraws at ~12 FPS.
+
+Changes:
+
+- `src/ai_chat/ui.py`: `TranscriptEntry` now caches the split `lines` per width
+  (`revision` bumps on `invalidate`). `TerminalUI._transcript_lines(width)`
+  assembles the transcript from those cached lines and only rebuilds when the
+  width or any entry revision changes; `_line_count` is maintained there.
+  `TranscriptControl` is now a plain `UIControl` whose `create_content` returns a
+  `UIContent` over the cached lines, so prompt_toolkit never re-splits or hashes
+  the transcript. This uses only public prompt_toolkit API (no monkey-patching);
+  `mouse_handler` keeps wheel scrolling, `is_focusable=False`.
+  `min_redraw_interval` raised from `1/12` to `1/60`.
+- `tests/test_ui.py`: new test asserts the assembled lines and per-entry split are
+  reused across frames/scrolls and rebuilt only on content/width change.
+- `README.md`: unchanged (no user-facing behavior change).
+
+Results (same benchmarks):
+
+- Warm assemble: ~0.001–0.010 ms (was 158 ms for 50 entries).
+- One-line scroll: ~0.012 ms (was ~320 ms for 100 entries).
+- End-to-end: 56 FPS over 1 s of continuous scrolling with 50 entries
+  (~5800 lines), mean transcript frame 2.5 ms, worst 5.0 ms (was effectively
+  ~3 FPS). Full suite 117 passed, Ruff and diff checks clean.
+
+Validation pending: Docker/real-PTY check, commit/push, Actions and published
+image verification (per AGENTS.md GitHub workflow).

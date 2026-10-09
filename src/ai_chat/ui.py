@@ -24,13 +24,23 @@ from prompt_toolkit.filters import (
     vi_navigation_mode,
     vi_replace_mode,
 )
-from prompt_toolkit.formatted_text import ANSI, FormattedText, split_lines
+from prompt_toolkit.formatted_text import (
+    ANSI,
+    FormattedText,
+    StyleAndTextTuples,
+    split_lines,
+)
 from prompt_toolkit.history import InMemoryHistory
 from prompt_toolkit.input import Input, create_input
 from prompt_toolkit.key_binding import KeyBindings, merge_key_bindings
 from prompt_toolkit.layout import Dimension, Float, FloatContainer, HSplit, Layout
 from prompt_toolkit.layout.containers import ScrollOffsets, Window
-from prompt_toolkit.layout.controls import BufferControl, FormattedTextControl
+from prompt_toolkit.layout.controls import (
+    BufferControl,
+    FormattedTextControl,
+    UIContent,
+    UIControl,
+)
 from prompt_toolkit.layout.menus import CompletionsMenu
 from prompt_toolkit.mouse_events import MouseEventType
 from prompt_toolkit.output import Output, create_output
@@ -53,11 +63,17 @@ class TranscriptEntry:
     options: dict[str, Any] = field(default_factory=dict)
     cached_width: int | None = None
     cached_ansi: ANSI | None = None
+    cached_lines_width: int | None = None
+    cached_lines: list[StyleAndTextTuples] | None = None
     live_response: bool = False
+    revision: int = 0
 
     def invalidate(self) -> None:
+        self.revision += 1
         self.cached_width = None
         self.cached_ansi = None
+        self.cached_lines_width = None
+        self.cached_lines = None
 
     def render(self, width: int) -> ANSI:
         if self.cached_ansi is not None and self.cached_width == width:
@@ -84,6 +100,18 @@ class TranscriptEntry:
         self.cached_width = width
         self.cached_ansi = ANSI(buffer.getvalue())
         return self.cached_ansi
+
+    def lines(self, width: int) -> list[StyleAndTextTuples]:
+        """Split once per width so redraws never re-parse the whole transcript."""
+        if self.cached_lines is not None and self.cached_lines_width == width:
+            return self.cached_lines
+        fragments = self.render(width).__pt_formatted_text__()
+        # split_lines always yields one extra trailing (empty) line, which the
+        # transcript adds back once at the very end.
+        lines = list(split_lines(fragments))[:-1]
+        self.cached_lines = lines
+        self.cached_lines_width = width
+        return lines
 
 
 class TranscriptConsole(Console):
@@ -139,16 +167,29 @@ class TranscriptConsole(Console):
         self.ui._changed()
 
 
-class TranscriptControl(FormattedTextControl):
-    """Formatted transcript control that owns wheel scrolling."""
+class TranscriptControl(UIControl):
+    """Transcript control that renders cached lines and owns wheel scrolling.
+
+    prompt_toolkit's ``FormattedTextControl`` re-splits the whole transcript into
+    lines and hashes every fragment on each redraw. We instead cache the split
+    lines (and the assembled transcript) so a frame only touches the entries and
+    the visible lines. Only the public ``UIControl``/``UIContent`` API is used.
+    """
 
     def __init__(self, ui: TerminalUI) -> None:
         self.ui = ui
-        super().__init__(
-            ui._transcript_text,
-            focusable=False,
+
+    def is_focusable(self) -> bool:
+        return False
+
+    def create_content(self, width: int, height: int | None = None) -> UIContent:
+        del height
+        lines = self.ui._transcript_lines(width)
+        return UIContent(
+            get_line=lambda i: lines[i] if 0 <= i < len(lines) else [],
+            line_count=len(lines),
+            cursor_position=self.ui._transcript_cursor(),
             show_cursor=False,
-            get_cursor_position=ui._transcript_cursor,
         )
 
     def mouse_handler(self, mouse_event):
@@ -158,7 +199,7 @@ class TranscriptControl(FormattedTextControl):
         if mouse_event.event_type == MouseEventType.SCROLL_DOWN:
             self.ui._scroll_forward(3)
             return None
-        return super().mouse_handler(mouse_event)
+        return NotImplemented
 
 
 class TerminalUI:
@@ -192,6 +233,8 @@ class TerminalUI:
         self._g_pending = False
         self._g_time = 0.0
         self._line_count = 0
+        self._transcript_lines_cache: list[StyleAndTextTuples] = []
+        self._transcript_lines_key: tuple[object, ...] | None = None
         self._text_length = 0
 
         self.buffer = Buffer(
@@ -253,7 +296,7 @@ class TerminalUI:
             cursor=ModalCursorShapeConfig(),
             full_screen=True,
             mouse_support=True,
-            min_redraw_interval=1 / 12,
+            min_redraw_interval=1 / 60,
             input=self._input,
             output=self._output,
             style=Style.from_dict(
@@ -744,21 +787,26 @@ class TerminalUI:
         return max(1, rows - (1 + editor_lines + 1))
 
     def _max_scroll_offset(self, height: int) -> int:
-        self._transcript_text()  # Refresh the measured line count.
+        self._transcript_lines(self._transcript_width())  # refresh line count
         return max(0, self._line_count - height)
 
-    def _rendered_entries(self) -> list[ANSI]:
-        width = self._transcript_width()
-        return [entry.render(width) for entry in self.entries]
-
-    def _transcript_text(self) -> FormattedText:
-        rendered = self._rendered_entries()
-        fragments: list[tuple[str, str]] = []
-        for item in rendered:
-            fragments.extend(item.__pt_formatted_text__())
-        content = FormattedText(fragments)
-        self._line_count = len(list(split_lines(content)))
-        return content
+    def _transcript_lines(self, width: int) -> list[StyleAndTextTuples]:
+        """Assemble the transcript from cached per-entry lines."""
+        key = (
+            width,
+            tuple((id(entry), entry.revision) for entry in self.entries),
+        )
+        if key != self._transcript_lines_key:
+            lines: list[StyleAndTextTuples] = []
+            for entry in self.entries:
+                lines.extend(entry.lines(width))
+            # split_lines always yields a trailing empty line; keep one so the
+            # line count and scroll math match the previous behavior.
+            lines.append([])
+            self._transcript_lines_cache = lines
+            self._line_count = len(lines)
+            self._transcript_lines_key = key
+        return self._transcript_lines_cache
 
     def _transcript_cursor(self):
         if not self._line_count:
