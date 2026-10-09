@@ -692,6 +692,46 @@ async def test_normal_mode_j_k_scroll_one_line():
 
 
 @pytest.mark.asyncio
+async def test_normal_mode_u_d_space_scroll_half_and_full_pages():
+    chat = FakeChat()
+    chat.responses["long"] = (long_markdown(), long_markdown())
+    async with running_ui(chat, width=72, height=14) as terminal:
+        terminal.send("long\r")
+        await terminal.wait_for(
+            lambda: "long" in chat.history and terminal.ui.waiting_for_input,
+            "long transcript",
+        )
+        ui = terminal.ui
+        half = ui._half_page_lines()
+        page = ui._page_lines()
+        max_offset = ui._max_scroll_offset(ui._viewport_height())
+        # Leave room below the top so half-page/page-down stay clear of the
+        # bottom, which would switch back to following the tail.
+        assert max_offset > half + page
+
+        terminal.send("\x1b")
+        await terminal.wait_for(
+            lambda: ui.app.vi_state.input_mode == InputMode.NAVIGATION,
+            "normal mode",
+        )
+        terminal.send("k" * max_offset)
+        await terminal.wait_for(lambda: ui.scroll_offset == 0, "at the top")
+
+        terminal.send("d")
+        await terminal.wait_for(
+            lambda: ui.scroll_offset == half, "d scrolls half a page down"
+        )
+        terminal.send(" ")
+        await terminal.wait_for(
+            lambda: ui.scroll_offset == half + page, "space scrolls a page down"
+        )
+        terminal.send("u")
+        await terminal.wait_for(
+            lambda: ui.scroll_offset == page, "u scrolls half a page up"
+        )
+
+
+@pytest.mark.asyncio
 async def test_transcript_lines_are_cached_until_content_changes():
     chat = FakeChat()
     chat.responses["long"] = (long_markdown(), long_markdown())

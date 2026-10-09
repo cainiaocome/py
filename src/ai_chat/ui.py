@@ -690,6 +690,21 @@ class TerminalUI:
             del event
             self._scroll_back(1)
 
+        @bindings.add("u", filter=vi_navigation_mode, eager=True)
+        def scroll_half_page_up(event) -> None:
+            del event
+            self._scroll_back(self._half_page_lines())
+
+        @bindings.add("d", filter=vi_navigation_mode, eager=True)
+        def scroll_half_page_down(event) -> None:
+            del event
+            self._scroll_forward(self._half_page_lines())
+
+        @bindings.add("space", filter=vi_navigation_mode, eager=True)
+        def scroll_page_down(event) -> None:
+            del event
+            self._scroll_forward(self._page_lines())
+
         @bindings.add("G", filter=vi_navigation_mode, eager=True)
         @bindings.add(
             "end", filter=Condition(lambda: not self._follow_tail), eager=True

@@ -92,6 +92,8 @@ Press Esc for normal mode, then:
 | Key | Action |
 | --- | --- |
 | `j`, `k` | Scroll one line down / up. |
+| `d`, `u` | Scroll half a page down / up (same as `Ctrl+D` / `Ctrl+U`). |
+| `Space` | Scroll down one full page. |
 | `gg`, `p` | Move to the previous question and pin it at the top. The first press jumps to the most recent question; press again to walk further back. |
 | `n` | Move to the next question, when there is one. |
 | `G` | Go to the very end of the transcript and follow new output. |
