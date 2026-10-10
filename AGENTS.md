@@ -16,9 +16,9 @@
 
 - Release tags are `v*` and trigger both `.github/workflows/release.yml` and
   the tag image in `.github/workflows/image.yml`.
-- Never put `[skip ci]` (or `[ci skip]`) in a commit message: GitHub then skips
-  tag-push workflows for any tag pointing at that commit. Docs-only pushes are
-  skipped with `paths-ignore` in the workflows instead.
+- Never put `[skip ci]` (or `[ci skip]`) in a commit message. GitHub then skips
+  tag-push workflows for any tag pointing at that commit, which silently breaks
+  the release. Let CI run on every push instead.
 
 ## Key bindings
 
