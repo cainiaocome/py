@@ -1,4 +1,4 @@
-"""Console-script entry point for the frozen builds (see ``ai-chat.spec``)."""
+"""Console-script entry point for the frozen builds (see ``pychat.spec``)."""
 
 from ai_chat.main import main
 

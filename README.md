@@ -52,8 +52,8 @@ attached to [GitHub releases](https://github.com/cainiaocome/py/releases).
 Download the file for your platform, make it executable, and run it:
 
 ```sh
-chmod +x ai-chat-linux-x86_64
-OLLAMA_API_KEY=... OLLAMA_MODEL=... ./ai-chat-linux-x86_64
+chmod +x pychat-linux-x86_64
+OLLAMA_API_KEY=... OLLAMA_MODEL=... ./pychat-linux-x86_64
 ```
 
 The binary reads configuration the same way as the Docker launcher: exported
@@ -61,18 +61,18 @@ The binary reads configuration the same way as the Docker launcher: exported
 directory, then `$HOME/.env`, and `AI_CHAT_ENV_FILE` selects one explicit file.
 Unlike the launcher, the binary parses a safe subset of `.env` syntax (blank
 lines, `#` comments, an optional `export`, `KEY=value`, and single or double
-quotes); it never executes the file or expands variables. Run
-`ai-chat --version` to print the version.
+quotes); it never executes the file or expands variables. Run the binary with
+`--version` to print the version.
 
 Build your own copy from a checkout (requires [uv](https://docs.astral.sh/uv/)):
 
 ```sh
-make binary        # writes dist/ai-chat
+make binary        # writes dist/pychat
 ```
 
-The build uses the committed `ai-chat.spec`, and `make binary` installs
+The build uses the committed `pychat.spec`, and `make binary` installs
 PyInstaller through the `packaging` dependency group. `tests/test_binary.py`
-smoke-tests a built binary and is skipped when `dist/ai-chat` is absent.
+smoke-tests a built binary and is skipped when `dist/pychat` is absent.
 
 Binaries are not code-signed. macOS users may need to approve the first run
 (Gatekeeper). macOS builds target Apple silicon and macOS 14 or newer; Linux

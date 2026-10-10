@@ -130,6 +130,16 @@ def test_version_flag(capsys):
     assert "ai-chat" in capsys.readouterr().out
 
 
+def test_program_name_is_pychat_when_frozen(monkeypatch):
+    monkeypatch.setattr(module.sys, "frozen", True, raising=False)
+    assert module._program_name() == "pychat"
+
+
+def test_program_name_is_ai_chat_when_not_frozen(monkeypatch):
+    monkeypatch.delattr(module.sys, "frozen", raising=False)
+    assert module._program_name() == "ai-chat"
+
+
 def test_unknown_arguments_are_ignored(monkeypatch):
     monkeypatch.setenv("OLLAMA_API_KEY", "test-key")
     monkeypatch.setenv("OLLAMA_MODEL", "test-model")

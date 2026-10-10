@@ -1,6 +1,6 @@
 """Smoke tests for the standalone binary built by ``make binary``.
 
-These are skipped unless ``dist/ai-chat`` exists, so the normal test run does
+These are skipped unless ``dist/pychat`` exists, so the normal test run does
 not require PyInstaller. The release workflow builds the binary first, then
 runs this file on every target platform.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-BINARY = Path(__file__).resolve().parents[1] / "dist" / "ai-chat"
+BINARY = Path(__file__).resolve().parents[1] / "dist" / "pychat"
 
 pytestmark = pytest.mark.skipif(
     not BINARY.exists(), reason="build the binary first: make binary"
@@ -48,7 +48,7 @@ def run_binary(tmp_path, home, *args, extra_env=None):
 def test_version_flag(tmp_path, home):
     result = run_binary(tmp_path, home, "--version")
     assert result.returncode == 0
-    assert result.stdout.strip().startswith("ai-chat ")
+    assert result.stdout.strip().startswith("pychat ")
 
 
 def test_missing_configuration_exits(tmp_path, home):

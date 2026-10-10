@@ -19,11 +19,11 @@ jobs:
       matrix:
         include:
           - runner: ubuntu-latest
-            artifact: ai-chat-linux-x86_64
+            artifact: pychat-linux-x86_64
           - runner: ubuntu-24.04-arm
-            artifact: ai-chat-linux-arm64
+            artifact: pychat-linux-arm64
           - runner: macos-14
-            artifact: ai-chat-macos-arm64
+            artifact: pychat-macos-arm64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -32,13 +32,13 @@ jobs:
           version: '0.12.23'
           python-version: '3.13'
       - name: Build the standalone binary
-        run: uv run --locked --group packaging pyinstaller --noconfirm --clean ai-chat.spec
+        run: uv run --locked --group packaging pyinstaller --noconfirm --clean pychat.spec
       - name: Smoke test the binary
         run: uv run pytest -q tests/test_binary.py
       - name: Stage the release asset
         run: |
           mkdir -p release
-          cp dist/ai-chat "release/${{ matrix.artifact }}"
+          cp dist/pychat "release/${{ matrix.artifact }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

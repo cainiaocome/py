@@ -3,7 +3,7 @@
 help:
 	@echo 'run     Start the published Docker chat client'
 	@echo 'image   Build a local Docker image'
-	@echo 'binary  Build the standalone ai-chat binary with PyInstaller'
+	@echo 'binary  Build the standalone pychat binary with PyInstaller'
 	@echo 'test    Run offline tests'
 	@echo 'lint    Check Python style'
 	@echo 'format  Format Python files'
@@ -21,7 +21,7 @@ build:
 	uv build
 
 binary:
-	uv run --locked --group packaging pyinstaller --noconfirm --clean ai-chat.spec
+	uv run --locked --group packaging pyinstaller --noconfirm --clean pychat.spec
 
 image:
 	docker build -t ai-chat:local .

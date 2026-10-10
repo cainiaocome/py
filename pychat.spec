@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller recipe for the standalone ``ai-chat`` binary.
+"""PyInstaller recipe for the standalone ``pychat`` binary.
 
 ``genai-prices`` and ``pydantic-ai-slim`` read their own distribution metadata
 at import time, so it has to travel with the frozen application. ``ai-chat``'s
@@ -37,7 +37,7 @@ exe = EXE(
     analysis.binaries,
     analysis.datas,
     [],
-    name="ai-chat",
+    name="pychat",
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

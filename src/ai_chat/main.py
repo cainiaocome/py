@@ -19,6 +19,16 @@ from ai_chat.terminal import create_session, run_chat
 from ai_chat.ui import run_terminal
 
 
+def _program_name() -> str:
+    """Return the user-facing program name.
+
+    The frozen standalone binary ships as ``pychat``; the installed console
+    script and the container entry point keep the distribution's ``ai-chat``
+    name.
+    """
+    return "pychat" if getattr(sys, "frozen", False) else "ai-chat"
+
+
 def _parse_arguments(argv: Sequence[str] | None) -> None:
     """Handle ``--version``/``--help`` and ignore anything else.
 
@@ -30,7 +40,7 @@ def _parse_arguments(argv: Sequence[str] | None) -> None:
     except PackageNotFoundError:
         app_version = "unknown"
     parser = argparse.ArgumentParser(
-        prog="ai-chat",
+        prog=_program_name(),
         description="Minimal streaming terminal chat with Ollama Cloud.",
     )
     parser.add_argument(
