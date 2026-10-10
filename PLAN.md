@@ -271,3 +271,21 @@ digest
 sha256:8f6b2827363a6479a16821a8745149ea86ac3e265e3510a91df645dfde9ec0d0 still
 renders the full-screen UI in a PTY. The local PyInstaller build is a 30 MB
 Linux binary and its full-screen UI also runs in a PTY.
+
+### v0.1.0 release
+
+Created and pushed `v0.1.0` on commit f82d305. The release workflow
+https://github.com/cainiaocome/py/actions/runs/38094278280 succeeded and
+published https://github.com/cainiaocome/py/releases/tag/v0.1.0 with
+`ai-chat-linux-x86_64` (31,124,472 bytes), `ai-chat-linux-arm64` (29,131,392
+bytes), `ai-chat-macos-arm64` (26,121,696 bytes) and `SHA256SUMS`. The image
+workflow https://github.com/cainiaocome/py/actions/runs/38094278225 published
+ghcr.io/cainiaocome/py:v0.1.0 (digest
+sha256:9e7c203512df26fcd90249693d80a79e421568749dd66a96caf1ecc6cc80626f).
+
+A tag pointing at a commit whose message contains a skip-CI marker is silently
+ignored by GitHub, so the first `v0.1.0` tag (on f855d32) triggered nothing. The
+fix is to avoid skip-CI markers entirely and let CI run on every push; the
+hazard is recorded in `AGENTS.md`. The downloaded Linux binary was re-checked:
+its sha256 matches `SHA256SUMS`, `--version` prints `ai-chat 0.1.0`, `.env`
+loading works, and a missing configuration exits 1.
