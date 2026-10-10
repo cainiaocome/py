@@ -39,9 +39,45 @@ AI_CHAT_IMAGE=ghcr.io/cainiaocome/py:v1.0.0 ./scripts/py
 
 Get a key from https://ollama.com/settings/keys. `OLLAMA_MODEL` is the Cloud
 model name (default example: `gpt-oss:20b`). Requests use
-`https://ollama.com/v1`. The Python application reads environment variables
-only and logs an error if either required value is missing or blank. Keep
-`.env` private; it is ignored by Git and loaded only by the launcher.
+`https://ollama.com/v1`. The Python application applies the same lookup
+(environment first, then `.env`) so it works both in the container and as a
+standalone binary, and logs an error if either required value is missing or
+blank. Keep `.env` private; it is ignored by Git and never mounted into the
+container.
+
+## Standalone binary
+
+Prebuilt binaries for Linux (x86_64, arm64), macOS (Apple silicon, Intel), and
+Windows (x86_64) are attached to
+[GitHub releases](https://github.com/cainiaocome/py/releases). Download the file
+for your platform, make it executable, and run it:
+
+```sh
+chmod +x ai-chat-linux-x86_64
+OLLAMA_API_KEY=... OLLAMA_MODEL=... ./ai-chat-linux-x86_64
+```
+
+The binary reads configuration the same way as the Docker launcher: exported
+`OLLAMA_API_KEY`/`OLLAMA_MODEL` win, otherwise it loads `.env` from the current
+directory, then `$HOME/.env`, and `AI_CHAT_ENV_FILE` selects one explicit file.
+Unlike the launcher, the binary parses a safe subset of `.env` syntax (blank
+lines, `#` comments, an optional `export`, `KEY=value`, and single or double
+quotes); it never executes the file or expands variables. Run
+`ai-chat --version` to print the version.
+
+Build your own copy from a checkout (requires [uv](https://docs.astral.sh/uv/)):
+
+```sh
+make binary        # writes dist/ai-chat
+```
+
+The build uses the committed `ai-chat.spec`, and `make binary` installs
+PyInstaller through the `packaging` dependency group. `tests/test_binary.py`
+smoke-tests a built binary and is skipped when `dist/ai-chat` is absent.
+
+Binaries are not code-signed. macOS users may need to approve the first run
+(Gatekeeper), and Windows may show a SmartScreen prompt. Linux builds target
+glibc; musl-based distributions may need the container instead.
 
 ## Key bindings
 
@@ -171,23 +207,29 @@ until the model finishes or you interrupt it with Ctrl+C. Failed or interrupted
 turns do not update history. Authentication errors, rate limits, timeouts,
 unavailable pages, and malformed responses are returned to the model as short
 error messages.
-Credentials and page contents are not logged. Python still reads configuration
-only from environment variables; the launcher alone loads the optional `.env`.
+Credentials and page contents are not logged. Configuration comes from the
+environment or an optional `.env` (see [Run](#run)); nothing is written back.
 
 ## Container publishing
 
 `.github/workflows/image.yml` runs tests and lint, then builds Linux amd64 and
 arm64 images. Pushes to `main` publish `latest` and a commit tag; `v*` Git tags
 publish a matching version tag. Manual runs are supported. Pull requests build
-without publishing. GHCR authentication uses the workflow's `GITHUB_TOKEN`
-with `packages: write`; no registry secret is required. The image is linked to
-this repository. For anonymous pulls, the GHCR package must have public
-visibility (new packages may initially be private). Private packages require
-an existing Docker credential with package read access.
+without publishing. The same workflow also builds and smoke-tests the Linux
+binary. GHCR authentication uses the workflow's `GITHUB_TOKEN` with
+`packages: write`; no registry secret is required. The image is linked to this
+repository. For anonymous pulls, the GHCR package must have public visibility
+(new packages may initially be private). Private packages require an existing
+Docker credential with package read access.
 
 Only allowlisted application files enter the Docker build context; `.env`, Git
 metadata, tests and local caches are excluded. The runtime contains Python and
 the installed application, runs as a non-root user by default, and has no uv.
+
+The `.github/workflows/release.yml` workflow builds the standalone binary for
+Linux (x86_64, arm64), macOS (arm64, x86_64) and Windows (x86_64). On `v*` tags
+it attaches every binary plus a `SHA256SUMS` file to the GitHub release; a
+manual dispatch only builds and smoke-tests the matrix.
 
 ## Development
 
@@ -203,6 +245,7 @@ uv run ai-chat
 ```sh
 make test
 make lint
+make binary     # optional: build the standalone binary
 ```
 
 `make help` lists commands. Tests use Pydantic AI's test models, mocked HTTP

@@ -226,3 +226,39 @@ sha256:a9a78ff311df0079f9cde871c9adf19592cdd0eb358b4988934284794b809079. A real-
 run of that image scrolled to the top (`k`), then measured distinct line tokens:
 top=0, `d` (half page)=82, `u`=0 (exact reverse), `Space` (full page)=194, and a
 clean Ctrl+C exit.
+
+## Standalone binaries (Phase 1 and 2)
+
+User request: release the tool as a single binary for Linux and macOS (and
+Windows where practical), not only as a container, without disturbing the
+Docker workflow they use most.
+
+Phase 1 (packaging and parity):
+
+- `src/ai_chat/config.py` resolves credentials like `scripts/py`: exported
+  values win, then the working directory's `.env`, then `$HOME/.env`;
+  `AI_CHAT_ENV_FILE` selects one explicit file. The native parser is a safe
+  subset (comments, `export`, quotes) and never executes the file. `main.py`
+  calls it, so the binary is usable without the Docker launcher.
+- `main.py` gained `--version` (argparse `parse_known_args`, so foreign argv is
+  ignored) and reports a missing explicit config file before the startup check.
+- `ai-chat.spec` and `packaging/entry.py` freeze the app with PyInstaller,
+  copying the distribution metadata that `genai-prices`, `pydantic-ai-slim` and
+  `ai-chat` read at import. `make binary` builds `dist/ai-chat` via the new
+  `packaging` dependency group.
+- Tests: `tests/test_config.py`, expanded `tests/test_main.py`, and
+  `tests/test_binary.py` (skipped unless `dist/ai-chat` exists).
+
+Phase 2 (release pipeline):
+
+- `.github/workflows/image.yml` also builds and smoke-tests the Linux binary.
+- `.github/workflows/release.yml` builds Linux x86_64/arm64, macOS arm64/x86_64
+  and Windows x86_64 binaries on `v*` tags, attaches them plus `SHA256SUMS` to
+  the GitHub release, and supports a build-only manual dispatch.
+
+The Docker path is unchanged in behavior: the launcher still loads `.env` and
+passes the two variables to the container, where the app sees complete
+environment values and skips file loading.
+
+Validation pending: full suite, Actions (tests, binary, container image), the
+release matrix dispatch, and the published image digest.

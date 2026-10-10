@@ -1,0 +1,74 @@
+name: Release binaries
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            artifact: ai-chat-linux-x86_64
+          - runner: ubuntu-24.04-arm
+            artifact: ai-chat-linux-arm64
+          - runner: macos-14
+            artifact: ai-chat-macos-arm64
+          - runner: macos-13
+            artifact: ai-chat-macos-x86_64
+          - runner: windows-latest
+            artifact: ai-chat-windows-x86_64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.23'
+          python-version: '3.13'
+      - name: Build the standalone binary
+        run: uv run --locked --group packaging pyinstaller --noconfirm --clean ai-chat.spec
+      - name: Smoke test the binary
+        run: uv run pytest -q tests/test_binary.py
+      - name: Stage the release asset
+        shell: bash
+        run: |
+          mkdir -p release
+          if [ -f dist/ai-chat.exe ]; then
+            cp dist/ai-chat.exe "release/${{ matrix.artifact }}.exe"
+          else
+            cp dist/ai-chat "release/${{ matrix.artifact }}"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true

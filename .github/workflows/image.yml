@@ -1,4 +1,4 @@
-name: Container image
+name: Image and binary
 
 on:
   push:
@@ -26,6 +26,20 @@ jobs:
       - run: uv sync --locked
       - run: make lint test
       - run: sh -n scripts/py
+
+  binary:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: '0.12.23'
+          python-version: '3.13'
+      - name: Build standalone binary
+        run: make binary
+      - name: Smoke test the binary
+        run: uv run pytest -q tests/test_binary.py
 
   image:
     needs: test

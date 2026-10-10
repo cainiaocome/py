@@ -21,6 +21,7 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = ["pyte>=0.8,<1", "pytest>=8,<10", "pytest-asyncio>=1,<2", "ruff>=0.12,<1"]
+packaging = ["pyinstaller>=6.10,<7"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
