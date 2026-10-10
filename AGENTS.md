@@ -12,6 +12,14 @@
 - When a feature is validated, record the run URL and published image digest in
   `PLAN.md`.
 
+## Releases
+
+- Release tags are `v*` and trigger both `.github/workflows/release.yml` and
+  the tag image in `.github/workflows/image.yml`.
+- Never put `[skip ci]` (or `[ci skip]`) in a commit message: GitHub then skips
+  tag-push workflows for any tag pointing at that commit. Docs-only pushes are
+  skipped with `paths-ignore` in the workflows instead.
+
 ## Key bindings
 
 - Ctrl+D must only scroll the transcript half a page down, in every mode. It
