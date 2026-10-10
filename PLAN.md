@@ -260,5 +260,14 @@ The Docker path is unchanged in behavior: the launcher still loads `.env` and
 passes the two variables to the container, where the app sees complete
 environment values and skips file loading.
 
-Validation pending: full suite, Actions (tests, binary, container image), the
-release matrix dispatch, and the published image digest.
+Validation: commit da40c8d; full suite 138 passed (the four binary smoke tests
+run when `dist/ai-chat` exists, otherwise they skip). Actions
+https://github.com/cainiaocome/py/actions/runs/38093738114 succeeded (test,
+binary and image jobs). The release matrix
+https://github.com/cainiaocome/py/actions/runs/38093877257 built and smoke-tested
+the Linux x86_64, Linux arm64 and macOS arm64 binaries; the release job is
+skipped without a `v*` tag. The published image ghcr.io/cainiaocome/py:latest
+digest
+sha256:8f6b2827363a6479a16821a8745149ea86ac3e265e3510a91df645dfde9ec0d0 still
+renders the full-screen UI in a PTY. The local PyInstaller build is a 30 MB
+Linux binary and its full-screen UI also runs in a PTY.
