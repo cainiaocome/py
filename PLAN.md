@@ -289,3 +289,20 @@ fix is to avoid skip-CI markers entirely and let CI run on every push; the
 hazard is recorded in `AGENTS.md`. The downloaded Linux binary was re-checked:
 its sha256 matches `SHA256SUMS`, `--version` prints `ai-chat 0.1.0`, `.env`
 loading works, and a missing configuration exits 1.
+
+### Renamed the standalone binary to pychat
+
+The frozen executable and its release assets are now `pychat` / `pychat-*`
+(spec `pychat.spec`, `dist/pychat`), and `--version` reports `pychat 0.1.0`.
+The Python distribution, import package, console script and container image
+keep the `ai-chat` name. Commit 573d66d; Actions
+https://github.com/cainiaocome/py/actions/runs/38094714084 succeeded. A tag-push
+workflow runs the file from the tagged commit, so `v0.1.0` was re-pointed at
+573d66d and the release republished with the renamed assets: release
+https://github.com/cainiaocome/py/actions/runs/38094852784 published
+`pychat-linux-x86_64` (31,125,896 bytes), `pychat-linux-arm64` (29,133,144
+bytes), `pychat-macos-arm64` (26,122,528 bytes) and `SHA256SUMS`; image
+https://github.com/cainiaocome/py/actions/runs/38094852816 published
+ghcr.io/cainiaocome/py:v0.1.0 (ghcr.io/cainiaocome/py@sha256:05ef4289448c5b7766516923779bb787c3fa5b083f0fd8e73afe7f0169f80dc7). The downloaded Linux
+asset's sha256 matches `SHA256SUMS` (2347ab9f...) and `--version` prints
+`pychat 0.1.0`.
