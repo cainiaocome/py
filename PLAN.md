@@ -229,9 +229,9 @@ clean Ctrl+C exit.
 
 ## Standalone binaries (Phase 1 and 2)
 
-User request: release the tool as a single binary for Linux and macOS (and
-Windows where practical), not only as a container, without disturbing the
-Docker workflow they use most.
+User request: release the tool as a single binary for Linux and macOS, not only
+as a container, without disturbing the Docker workflow they use most. Windows
+and Intel macOS are out of scope.
 
 Phase 1 (packaging and parity):
 
@@ -252,9 +252,9 @@ Phase 1 (packaging and parity):
 Phase 2 (release pipeline):
 
 - `.github/workflows/image.yml` also builds and smoke-tests the Linux binary.
-- `.github/workflows/release.yml` builds Linux x86_64/arm64, macOS arm64/x86_64
-  and Windows x86_64 binaries on `v*` tags, attaches them plus `SHA256SUMS` to
-  the GitHub release, and supports a build-only manual dispatch.
+- `.github/workflows/release.yml` builds Linux x86_64/arm64 and macOS arm64
+  binaries on `v*` tags, attaches them plus `SHA256SUMS` to the GitHub release,
+  and supports a build-only manual dispatch.
 
 The Docker path is unchanged in behavior: the launcher still loads `.env` and
 passes the two variables to the container, where the app sees complete

@@ -24,10 +24,6 @@ jobs:
             artifact: ai-chat-linux-arm64
           - runner: macos-14
             artifact: ai-chat-macos-arm64
-          - runner: macos-13
-            artifact: ai-chat-macos-x86_64
-          - runner: windows-latest
-            artifact: ai-chat-windows-x86_64
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
@@ -40,14 +36,9 @@ jobs:
       - name: Smoke test the binary
         run: uv run pytest -q tests/test_binary.py
       - name: Stage the release asset
-        shell: bash
         run: |
           mkdir -p release
-          if [ -f dist/ai-chat.exe ]; then
-            cp dist/ai-chat.exe "release/${{ matrix.artifact }}.exe"
-          else
-            cp dist/ai-chat "release/${{ matrix.artifact }}"
-          fi
+          cp dist/ai-chat "release/${{ matrix.artifact }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

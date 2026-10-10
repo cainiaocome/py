@@ -9,14 +9,11 @@ from __future__ import annotations
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 
 import pytest
 
 BINARY = Path(__file__).resolve().parents[1] / "dist" / "ai-chat"
-if sys.platform == "win32":
-    BINARY = BINARY.with_suffix(".exe")
 
 pytestmark = pytest.mark.skipif(
     not BINARY.exists(), reason="build the binary first: make binary"

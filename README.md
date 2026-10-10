@@ -47,10 +47,9 @@ container.
 
 ## Standalone binary
 
-Prebuilt binaries for Linux (x86_64, arm64), macOS (Apple silicon, Intel), and
-Windows (x86_64) are attached to
-[GitHub releases](https://github.com/cainiaocome/py/releases). Download the file
-for your platform, make it executable, and run it:
+Prebuilt binaries for Linux (x86_64, arm64) and macOS (Apple silicon) are
+attached to [GitHub releases](https://github.com/cainiaocome/py/releases).
+Download the file for your platform, make it executable, and run it:
 
 ```sh
 chmod +x ai-chat-linux-x86_64
@@ -76,8 +75,9 @@ PyInstaller through the `packaging` dependency group. `tests/test_binary.py`
 smoke-tests a built binary and is skipped when `dist/ai-chat` is absent.
 
 Binaries are not code-signed. macOS users may need to approve the first run
-(Gatekeeper), and Windows may show a SmartScreen prompt. Linux builds target
-glibc; musl-based distributions may need the container instead.
+(Gatekeeper). macOS builds target Apple silicon and macOS 14 or newer; Linux
+builds target glibc, so musl-based distributions may need the container
+instead.
 
 ## Key bindings
 
@@ -227,9 +227,9 @@ metadata, tests and local caches are excluded. The runtime contains Python and
 the installed application, runs as a non-root user by default, and has no uv.
 
 The `.github/workflows/release.yml` workflow builds the standalone binary for
-Linux (x86_64, arm64), macOS (arm64, x86_64) and Windows (x86_64). On `v*` tags
-it attaches every binary plus a `SHA256SUMS` file to the GitHub release; a
-manual dispatch only builds and smoke-tests the matrix.
+Linux (x86_64, arm64) and macOS (Apple silicon). On `v*` tags it attaches every
+binary plus a `SHA256SUMS` file to the GitHub release; a manual dispatch only
+builds and smoke-tests the matrix.
 
 ## Development
 
