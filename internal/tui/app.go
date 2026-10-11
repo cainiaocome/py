@@ -739,7 +739,7 @@ func (m *Model) viewportHeight() int {
 }
 
 func (m *Model) editorHeight(width int) int {
-	promptWidth := runeLen(m.promptLabel())
+	promptWidth := displayWidth(m.promptLabel())
 	available := max(1, width-promptWidth)
 	visual := 0
 	for _, line := range strings.Split(m.editor.Text(), "\n") {
@@ -852,7 +852,7 @@ func (m *Model) View() string {
 			}
 		}
 	}
-	editor, cursorRow, cursorColumn := m.renderEditor(width, editorHeight)
+	editor, cursorRow, cursorCell := m.renderEditor(width, editorHeight)
 	parts := make([]string, 0, len(visible)+len(editor)+2)
 	parts = append(parts, visible...)
 	parts = append(parts, sgr("90", strings.Repeat("─", width)))
@@ -863,15 +863,17 @@ func (m *Model) View() string {
 	// leave it in the bottom-left corner. The frame always fills the screen, so
 	// the line counted from the top is also the line the terminal shows.
 	cursorLine := len(visible) + 1 + cursorRow
-	m.cursorAnchor.Set(cursorLine+1, cursorColumn+1)
+	m.cursorAnchor.Set(cursorLine+1, cursorCell+1)
 	return strings.Join(parts, "\n")
 }
 
 // renderEditor renders the editor block. It also reports the caret as a 0-based
-// row within that block and a 0-based display column within that row.
-func (m *Model) renderEditor(width, height int) (editor []string, cursorRow, cursorColumn int) {
+// row within that block and its 0-based display column within that row, which
+// View uses to place the hardware cursor.
+func (m *Model) renderEditor(width, height int) (editor []string, cursorRow, cursorCell int) {
 	prompt := m.promptLabel()
-	promptWidth := runeLen(prompt)
+	promptWidth := displayWidth(prompt)
+	promptRunes := runeLen(prompt)
 	lines, cursorLine, cursorCol := m.editor.VisualLines(width, promptWidth)
 	start := 0
 	if len(lines) > height {
@@ -893,14 +895,24 @@ func (m *Model) renderEditor(width, height int) (editor []string, cursorRow, cur
 		editor = append(editor, line)
 	}
 	cursorRow = cursorLine - start
-	cursorColumn = cursorCol
-	if cursorRow == 0 {
-		cursorColumn += promptWidth
+	if cursorLine >= 0 && cursorLine < len(lines) {
+		// The caret sits after cursorCol runes of the line, so its screen cell
+		// is the display width of that prefix. Counting runes would place it a
+		// cell early for every full-width character before it, which is exactly
+		// where the terminal anchors the IME candidate window.
+		cursorCell = displayWidth(firstRunes(lines[cursorLine], cursorCol))
+		if cursorRow == 0 {
+			cursorCell += promptWidth
+		}
 	}
 	if cursorRow >= 0 && cursorRow < len(editor) {
-		editor[cursorRow] = applyCursor(editor[cursorRow], cursorColumn, m.editor.Mode())
+		runeIndex := cursorCol
+		if cursorRow == 0 {
+			runeIndex += promptRunes
+		}
+		editor[cursorRow] = applyCursor(editor[cursorRow], runeIndex, m.editor.Mode())
 	}
-	return editor, cursorRow, cursorColumn
+	return editor, cursorRow, cursorCell
 }
 
 func (m *Model) renderFooter(width int) string {

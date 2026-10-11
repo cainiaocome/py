@@ -5,7 +5,6 @@ import (
 	"io"
 	"strings"
 	"testing"
-	"unicode/utf8"
 )
 
 // paintedCursor locates the drawn cursor in a rendered frame and returns its
@@ -14,7 +13,7 @@ func paintedCursor(t *testing.T, view string) (int, int) {
 	t.Helper()
 	for index, line := range strings.Split(view, "\n") {
 		if offset := strings.Index(line, beamCursor); offset >= 0 {
-			return index + 1, utf8.RuneCountInString(line[:offset]) + 1
+			return index + 1, displayWidth(line[:offset]) + 1
 		}
 	}
 	t.Fatalf("no cursor was painted into:\n%s", view)
@@ -30,6 +29,10 @@ func TestCursorAnchorTracksThePaintedCursor(t *testing.T) {
 		"hello",
 		"hello\nworld",
 		"a much longer single line of input",
+		// Full-width characters occupy two cells each.
+		"\u4f60\u597d",
+		"hi \u4f60\u597d there",
+		"\u4f60\u597d\n\u4e16\u754c",
 	}
 	for _, input := range inputs {
 		model.editor.SetText(input)
@@ -200,5 +203,27 @@ func TestCursorWriterStillLooksLikeATerminal(t *testing.T) {
 	}
 	if _, err := io.Copy(io.Discard, NewCursorWriter(io.Discard, NewCursorAnchor())); err != nil {
 		t.Fatalf("reading from a non-terminal writer should just report EOF: %v", err)
+	}
+}
+
+func TestCursorAnchorCountsWideCharactersAsTwoCells(t *testing.T) {
+	model := New(newFakeChat("m"))
+	model.width, model.height = 40, 12
+	model.editor.SetText("\u4f60\u597d")
+	model.View()
+
+	// The prompt "You [m] > " is 10 cells and each glyph below is 2 cells, so
+	// the caret belongs on cell 14. Counting runes would report 12, which is
+	// where the IME candidate window would then be drawn.
+	row, paintedColumn := paintedCursor(t, model.View())
+	anchorRow, anchorColumn, ok := model.cursorAnchor.position()
+	if !ok {
+		t.Fatal("the anchor was never published")
+	}
+	if anchorColumn != 15 {
+		t.Fatalf("anchor column = %d, want 15 (10 prompt cells + 4 for two wide glyphs)", anchorColumn)
+	}
+	if anchorRow != row || anchorColumn != paintedColumn {
+		t.Fatalf("anchor = (%d,%d), painted cursor at (%d,%d)", anchorRow, anchorColumn, row, paintedColumn)
 	}
 }

@@ -1,6 +1,10 @@
 package tui
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 // ANSI SGR fragments. The transcript caches fully-styled lines, so these are
 // applied once per rebuilt entry, not per frame.
@@ -31,22 +35,39 @@ func sgr(params, text string) string {
 	return "\x1b[" + params + "m" + text + ansiReset
 }
 
+// runeLen counts runes. Rune offsets index into strings; they are not screen
+// columns, because a full-width character such as a Chinese one occupies two
+// terminal cells.
 func runeLen(s string) int { return len([]rune(s)) }
 
+// displayWidth is the number of terminal cells s occupies.
+func displayWidth(s string) int { return ansi.StringWidth(s) }
+
+// firstRunes returns the first n runes of s.
+func firstRunes(s string, n int) string {
+	runes := []rune(s)
+	if n <= 0 {
+		return ""
+	}
+	if n > len(runes) {
+		n = len(runes)
+	}
+	return string(runes[:n])
+}
+
 func padRight(s string, width int) string {
-	if width <= runeLen(s) {
+	if width <= displayWidth(s) {
 		return s
 	}
-	return s + strings.Repeat(" ", width-runeLen(s))
+	return s + strings.Repeat(" ", width-displayWidth(s))
 }
 
 func truncateRunes(s string, width int) string {
-	runes := []rune(s)
-	if len(runes) <= width {
-		return s
-	}
 	if width < 0 {
 		width = 0
 	}
-	return string(runes[:width])
+	if displayWidth(s) <= width {
+		return s
+	}
+	return ansi.Truncate(s, width, "")
 }

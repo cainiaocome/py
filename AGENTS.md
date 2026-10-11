@@ -60,6 +60,11 @@ as its own project: do not merge it into `main`, and keep the Python project on
   output against that interface and calling `GetSize` on the descriptor, so a
   wrapper that hides it makes the UI render a fixed 80x24 window instead of
   filling the terminal. Never wrap stdout in something that only writes.
+- Caret positions are **display cells**, never rune counts. A full-width glyph
+  (Chinese, Japanese, Korean) occupies two terminal cells, so counting runes
+  puts the cursor one cell early per wide glyph before it. Use `displayWidth`
+  for anything that becomes a screen column, and `runeLen` only for indexing
+  into strings.
 - Bubble Tea reports a lone space as `KeySpace`, not `KeyRunes`. Any code that
   inserts typed text must handle both, or spaces are silently dropped.
 
