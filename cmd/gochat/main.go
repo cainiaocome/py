@@ -2,10 +2,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
@@ -18,11 +21,18 @@ import (
 // Version is overridable at build time:
 //
 //	go build -ldflags "-X main.Version=1.2.3"
-var Version = "0.1.11"
+var Version = "0.1.12"
+
+// checkTimeout bounds --check so an unreachable endpoint reports instead of
+// hanging.
+const checkTimeout = 20 * time.Second
 
 func main() {
 	if handled := handleArguments(os.Args[1:], os.Stdout); handled {
 		return
+	}
+	if slices.Contains(os.Args[1:], "--check") {
+		os.Exit(runCheck(config.Environ(), os.Stdout))
 	}
 
 	env := config.Environ()
@@ -83,12 +93,89 @@ func handleArguments(args []string, out io.Writer) bool {
 	return false
 }
 
+// checker is the part of the chat backend that --check exercises.
+type checker interface {
+	ListModels(ctx context.Context) ([]string, error)
+	Ping(ctx context.Context) error
+}
+
+// runCheck loads the credentials and asks the endpoint what it offers.
+func runCheck(env map[string]string, out io.Writer) int {
+	if err := config.Load(env, "", ""); err != nil {
+		fmt.Fprintln(out, "ERROR: "+err.Error())
+		return 1
+	}
+	apiKey := strings.TrimSpace(env["OLLAMA_API_KEY"])
+	model := strings.TrimSpace(env["OLLAMA_MODEL"])
+	return report(env, out, chat.New(apiKey, model))
+}
+
+// report prints the effective configuration and then probes the endpoint. It
+// exists because the full-screen UI owns the terminal: when a request fails
+// there is nowhere to read the reason, and "check your connection" is not
+// something a user can act on.
+//
+// The API key is never printed, only whether it is set and how long it is.
+func report(env map[string]string, out io.Writer, backend checker) int {
+	apiKey := strings.TrimSpace(env["OLLAMA_API_KEY"])
+	model := strings.TrimSpace(env["OLLAMA_MODEL"])
+
+	fmt.Fprintf(out, "gochat %s\n", Version)
+	fmt.Fprintf(out, "endpoint  %s\n", chat.BaseURL)
+	if model == "" {
+		fmt.Fprintln(out, "model     unset")
+	} else {
+		fmt.Fprintf(out, "model     %s\n", model)
+	}
+	if apiKey == "" {
+		fmt.Fprintln(out, "api key   unset")
+	} else {
+		fmt.Fprintf(out, "api key   set (%d characters)\n", len(apiKey))
+	}
+	if apiKey == "" || model == "" {
+		fmt.Fprintln(out, "result    FAILED: set OLLAMA_API_KEY and OLLAMA_MODEL, then run again")
+		return 1
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
+	defer cancel()
+	models, err := backend.ListModels(ctx)
+	if err != nil {
+		fmt.Fprintf(out, "result    FAILED: could not list models: %s\n", err)
+		return 1
+	}
+	fmt.Fprintf(out, "models    %d available\n", len(models))
+	if !slices.Contains(models, model) {
+		fmt.Fprintf(out, "result    FAILED: %s is not a model this endpoint offers\n", model)
+		fmt.Fprintf(out, "hint      run gochat and use /model to pick one, for example %s\n", strings.Join(firstModels(models, 3), ", "))
+		return 1
+	}
+	// Model listing does not authenticate, so ask for a real completion. It is
+	// the same endpoint the app uses, which makes this answer conclusive.
+	fmt.Fprintf(out, "checking  chat completion with %s\n", model)
+	if err := backend.Ping(ctx); err != nil {
+		fmt.Fprintf(out, "result    FAILED: %s\n", err)
+		return 1
+	}
+	fmt.Fprintln(out, "result    OK: the endpoint answered and the API key works")
+	return 0
+}
+
+// firstModels lists up to limit model names for a hint.
+func firstModels(models []string, limit int) []string {
+	if len(models) < limit {
+		return models
+	}
+	return models[:limit]
+}
+
 func printUsage(out io.Writer) {
-	fmt.Fprintln(out, "usage: gochat [-h] [--version]")
+	fmt.Fprintln(out, "usage: gochat [-h] [--version] [--check]")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "Minimal streaming terminal chat with Ollama Cloud.")
 	fmt.Fprintln(out)
 	fmt.Fprintln(out, "options:")
 	fmt.Fprintln(out, "  -h, --help  show this help message and exit")
 	fmt.Fprintln(out, "  --version   show program's version number and exit")
+	fmt.Fprintln(out, "  --check     print the effective configuration and test the endpoint")
 }

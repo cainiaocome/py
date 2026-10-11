@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/cainiaocome/py/internal/command"
+	"github.com/cainiaocome/py/internal/textutil"
 	"github.com/cainiaocome/py/internal/tui"
 )
 
@@ -99,7 +100,7 @@ func runResponse(c tui.Session, out io.Writer, signals <-chan os.Signal, prompt 
 			fmt.Fprintln(out, result.text)
 		}
 		if result.err != nil && !errors.Is(result.err, context.Canceled) {
-			fmt.Fprintln(out, "Request failed. Check your connection, API key and model; try again.")
+			fmt.Fprintln(out, "Request failed: "+textutil.SafeLiteral(result.err.Error()))
 		}
 	}
 }

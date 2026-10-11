@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"sort"
 	"strings"
 )
@@ -76,11 +77,14 @@ func (c *Client) ListModels(ctx context.Context) ([]string, error) {
 	c.authorize(request)
 	response, err := c.http.Do(request)
 	if err != nil {
-		return nil, err
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, fmt.Errorf("cannot reach %s: %w", c.host(), err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return nil, fmt.Errorf("model list failed (HTTP %d)", response.StatusCode)
+		return nil, fmt.Errorf("model list failed (HTTP %d)%s", response.StatusCode, detailSuffix(response.Body))
 	}
 	var payload struct {
 		Data []struct {
@@ -137,12 +141,11 @@ func (c *Client) StreamChat(
 		if ctx.Err() != nil {
 			return Message{}, ctx.Err()
 		}
-		return Message{}, err
+		return Message{}, fmt.Errorf("cannot reach %s: %w", c.host(), err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
-		return Message{}, fmt.Errorf("request failed (HTTP %d)", response.StatusCode)
+		return Message{}, fmt.Errorf("request failed (HTTP %d)%s", response.StatusCode, detailSuffix(response.Body))
 	}
 
 	assembled := Message{Role: "assistant"}
@@ -210,6 +213,106 @@ func (c *Client) StreamChat(
 
 func (c *Client) authorize(request *http.Request) {
 	request.Header.Set("Authorization", "Bearer "+c.apiKey)
+}
+
+// host names the endpoint in error messages, so a failure says what could not be
+// reached instead of leaving the reader to guess.
+func (c *Client) host() string {
+	if parsed, err := url.Parse(c.baseURL); err == nil && parsed.Host != "" {
+		return parsed.Host
+	}
+	return c.baseURL
+}
+
+// detailSuffix reads the reason the server gave for rejecting a request. The
+// body is written by the endpoint, so it is reduced to a single bounded line
+// before it can reach a terminal.
+func detailSuffix(body io.Reader) string {
+	if reason := errorReason(body); reason != "" {
+		return ": " + reason
+	}
+	return ""
+}
+
+// errorReason extracts a short human-readable reason from an error body.
+// Endpoints send {"error":{"message":"..."}}, an OpenAI-style envelope with a
+// bare string, or plain prose.
+func errorReason(body io.Reader) string {
+	data, _ := io.ReadAll(io.LimitReader(body, 8<<10))
+	text := strings.Join(strings.Fields(string(data)), " ")
+	if strings.HasPrefix(text, "{") {
+		var envelope struct {
+			Error   json.RawMessage `json:"error"`
+			Message string          `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(text), &envelope); err == nil {
+			if reason := nestedMessage(envelope.Error); reason != "" {
+				text = reason
+			} else if envelope.Message != "" {
+				text = envelope.Message
+			}
+		}
+	}
+	if runes := []rune(text); len(runes) > 300 {
+		text = string(runes[:300]) + "…"
+	}
+	return text
+}
+
+// nestedMessage reads the message out of an error field that is either an object
+// or a bare string.
+func nestedMessage(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var object struct {
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(raw, &object); err == nil && object.Message != "" {
+		return object.Message
+	}
+	var text string
+	if err := json.Unmarshal(raw, &text); err == nil {
+		return text
+	}
+	return ""
+}
+
+// Ping sends the smallest possible chat request. Listing models does not
+// authenticate -- Ollama Cloud answers /models without a key -- so a real
+// completion is the only way to tell an unusable key from a healthy connection.
+// It exists for gochat --check.
+func (c *Client) Ping(ctx context.Context, model string) error {
+	payload := map[string]any{
+		"model":      model,
+		"messages":   []Message{{Role: "user", Content: "ping"}},
+		"max_tokens": 1,
+		"stream":     false,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	c.authorize(request)
+
+	response, err := c.http.Do(request)
+	if err != nil {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return fmt.Errorf("cannot reach %s: %w", c.host(), err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return fmt.Errorf("chat completion failed (HTTP %d)%s", response.StatusCode, detailSuffix(response.Body))
+	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
+	return nil
 }
 
 // ErrNoBody reports a stream that ended without any usable payload.

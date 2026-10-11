@@ -73,7 +73,7 @@ func TestCommandsAndRecovery(t *testing.T) {
 		"Assistant [m]",
 		"answer to hello",
 		"Conversation cleared.",
-		"Request failed. Check your connection, API key and model; try again.",
+		"Request failed: nope",
 		"answer to after",
 		"Goodbye.",
 	} {

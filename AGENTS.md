@@ -67,6 +67,15 @@ following when touching the code.
   cannot know (whether new output should pull the window down with it).
   `syncViewport` mirrors the model into it once per message from `Update`,
   which is also what keeps `View` free of bookkeeping.
+- **A failure must say why.** Never replace an error with advice: "check your
+  connection, API key and model" is not something a user can act on. Transport
+  errors name the host; HTTP errors carry the server's reason (bounded to one
+  line of at most 300 runes, since the body is written by the endpoint). The
+  full-screen UI owns the terminal, so `gochat --check` reports the same
+  information outside it, and it sends a real one-token chat request because
+  `/models` does not authenticate.
+- **Secrets are never printed**, only whether they are set and how long they
+  are.
 - **Channels, not callbacks-into-the-UI.** The agent loop runs in a goroutine
   and publishes `streamEvent`s on a channel; the model consumes them in
   `Update`. Never touch the model or the terminal from a producer goroutine.

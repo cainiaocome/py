@@ -93,6 +93,12 @@ func (c *Chat) ListModels(ctx context.Context) ([]string, error) {
 	return c.client.ListModels(ctx)
 }
 
+// Ping sends a minimal chat request with the active model. It exists for
+// gochat --check, which has to prove the credentials work, not just the network.
+func (c *Chat) Ping(ctx context.Context) error {
+	return c.client.Ping(ctx, c.ModelName())
+}
+
 // SwitchModel changes the active model, keeping history. It rejects blank names
 // and names containing whitespace.
 func (c *Chat) SwitchModel(model string) error {

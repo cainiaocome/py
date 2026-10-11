@@ -235,7 +235,9 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 			if errors.Is(event.err, context.Canceled) {
 				m.appendStyled("Response interrupted.", styleYellow)
 			} else {
-				m.appendStyled("Request failed. Check your connection, API key and model; try again.", styleRed)
+				// The reason is what makes the failure actionable, so it is shown
+				// rather than replaced by advice.
+				m.appendStyled("Request failed: "+textutil.SafeLiteral(event.err.Error()), styleRed)
 			}
 		}
 	}

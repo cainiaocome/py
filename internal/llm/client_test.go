@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -188,16 +190,108 @@ func TestStreamChatCancellationPropagates(t *testing.T) {
 	}
 }
 
-func TestStreamChatHTTPErrorDoesNotLeakTheBody(t *testing.T) {
+// A rejected request must say why: "request failed (HTTP 401)" alone leaves the
+// reader with nothing to act on. The reason is written by the endpoint, so it is
+// bounded and collapsed before it can reach a terminal.
+func TestStreamChatHTTPErrorReportsABoundedReason(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{
+			name: "openai style error envelope",
+			body: `{"error":{"message":"invalid api key","type":"invalid_request_error"}}`,
+			want: "invalid api key",
+		},
+		{
+			name: "plain text",
+			body: "model not found",
+			want: "model not found",
+		},
+		{
+			name: "newlines and tabs collapse onto one line",
+			body: "line one\n\tline two",
+			want: "line one line two",
+		},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusUnauthorized)
+				_, _ = w.Write([]byte(testCase.body))
+			}))
+			defer server.Close()
+
+			_, err := New(server.URL, "k").StreamChat(context.Background(), "m", nil, nil, nil)
+			if err == nil {
+				t.Fatal("expected an error")
+			}
+			if !strings.Contains(err.Error(), "HTTP 401") || !strings.Contains(err.Error(), testCase.want) {
+				t.Fatalf("err = %q, want it to carry %q", err, testCase.want)
+			}
+			if strings.Contains(err.Error(), "\n") {
+				t.Fatalf("err = %q, want a single line", err)
+			}
+		})
+	}
+}
+
+func TestStreamChatHTTPErrorTruncatesAHugeBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
-		_, _ = w.Write([]byte("SECRET_UPSTREAM_BODY"))
+		_, _ = w.Write([]byte(strings.Repeat("boom ", 100_000)))
 	}))
 	defer server.Close()
 
 	_, err := New(server.URL, "k").StreamChat(context.Background(), "m", nil, nil, nil)
-	if err == nil || strings.Contains(err.Error(), "SECRET_UPSTREAM_BODY") {
-		t.Fatalf("err = %v", err)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if runes := len([]rune(err.Error())); runes > 400 {
+		t.Fatalf("err is %d runes, want it bounded", runes)
+	}
+}
+
+// A transport failure has to name the endpoint: "dial tcp: connection refused"
+// on its own does not say what could not be reached.
+func TestStreamChatTransportFailureNamesTheHost(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	address := listener.Addr().String()
+	listener.Close() // nothing is listening now, so dialling is refused
+
+	_, err = New("http://"+address+"/v1", "k").StreamChat(context.Background(), "m", nil, nil, nil)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), address) {
+		t.Fatalf("err = %q, want it to name %s", err, address)
+	}
+}
+
+func TestListModelsTransportFailureNamesTheHost(t *testing.T) {
+	_, err := New("http://127.0.0.1:1/v1", "k").ListModels(context.Background())
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if !strings.Contains(err.Error(), "127.0.0.1:1") {
+		t.Fatalf("err = %q, want it to name the host", err)
+	}
+}
+
+func TestListModelsReportsTheServersReason(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"unauthorized"}}`))
+	}))
+	defer server.Close()
+
+	_, err := New(server.URL, "k").ListModels(context.Background())
+	if err == nil || !strings.Contains(err.Error(), "unauthorized") {
+		t.Fatalf("err = %v, want it to carry the server's reason", err)
 	}
 }
 
@@ -216,5 +310,69 @@ func TestListModelsErrors(t *testing.T) {
 	defer invalid.Close()
 	if _, err := New(invalid.URL, "k").ListModels(context.Background()); err == nil {
 		t.Fatal("want error for invalid json")
+	}
+}
+
+func TestPingReportsAnUnauthorizedKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasSuffix(r.URL.Path, "/chat/completions") {
+			t.Errorf("Ping sent %s %s", r.Method, r.URL.Path)
+		}
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"Unauthorized","type":"api_error","param":null,"code":null}}`))
+	}))
+	defer server.Close()
+
+	err := New(server.URL, "k").Ping(context.Background(), "m")
+	if err == nil || !strings.Contains(err.Error(), "Unauthorized") {
+		t.Fatalf("err = %v, want the server's reason", err)
+	}
+}
+
+func TestPingSucceedsOnAnAcceptedKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer k" {
+			t.Errorf("Authorization = %q", got)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if !strings.Contains(string(body), `"max_tokens":1`) {
+			t.Errorf("body = %s, want the smallest request", body)
+		}
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"pong"}}]}`))
+	}))
+	defer server.Close()
+
+	if err := New(server.URL, "k").Ping(context.Background(), "m"); err != nil {
+		t.Fatalf("err = %v", err)
+	}
+}
+
+// An endpoint that is down has to be named, or the report cannot be acted on.
+func TestPingNamesAnUnreachableHost(t *testing.T) {
+	err := New("http://127.0.0.1:1/v1", "k").Ping(context.Background(), "m")
+	if err == nil || !strings.Contains(err.Error(), "127.0.0.1:1") {
+		t.Fatalf("err = %v, want it to name the host", err)
+	}
+}
+
+func TestErrorReasonReadsTheOpenAIEnvelope(t *testing.T) {
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"nested message", `{"error":{"message":"invalid api key","type":"x"}}`, "invalid api key"},
+		{"bare string", `{"error":"rate limited"}`, "rate limited"},
+		{"top level message", `{"message":"model not found"}`, "model not found"},
+		{"not json", "plain   prose\nhere", "plain prose here"},
+		{"empty", "", ""},
+		{"unparseable object", `{"error":{`, `{"error":{`},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := errorReason(strings.NewReader(testCase.body)); got != testCase.want {
+				t.Fatalf("errorReason(%q) = %q, want %q", testCase.body, got, testCase.want)
+			}
+		})
 	}
 }

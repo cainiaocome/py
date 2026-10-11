@@ -2,10 +2,16 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/cainiaocome/py/internal/chat"
 )
 
 func writeEnvFile(t *testing.T, content string) string {
@@ -77,5 +83,142 @@ func TestRequireCredentialsMissingExplicitFile(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("want an error for a missing explicit configuration file")
+	}
+}
+
+// fakeLister stands in for the chat backend so --check can be tested without a
+// network.
+type fakeLister struct {
+	models  []string
+	err     error
+	pingErr error
+	pinged  bool
+}
+
+func (f *fakeLister) ListModels(context.Context) ([]string, error) { return f.models, f.err }
+func (f *fakeLister) Ping(context.Context) error                   { f.pinged = true; return f.pingErr }
+
+func TestCheckReportsAMissingConfiguration(t *testing.T) {
+	var out bytes.Buffer
+	code := report(map[string]string{"OLLAMA_MODEL": "m"}, &out, &fakeLister{})
+	if code == 0 {
+		t.Fatal("an unconfigured client should fail the check")
+	}
+	if !strings.Contains(out.String(), "api key   unset") || !strings.Contains(out.String(), "OLLAMA_API_KEY") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+// The key is a secret: the check may say whether it is set, never what it is.
+func TestCheckNeverPrintsTheAPIKey(t *testing.T) {
+	var out bytes.Buffer
+	env := map[string]string{"OLLAMA_API_KEY": "super-secret-key", "OLLAMA_MODEL": "m"}
+	if code := report(env, &out, &fakeLister{models: []string{"m", "other"}}); code != 0 {
+		t.Fatalf("code = %d, output = %q", code, out.String())
+	}
+	if strings.Contains(out.String(), "super-secret-key") {
+		t.Fatalf("the API key leaked into the report: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "api key   set (16 characters)") {
+		t.Fatalf("output = %q", out.String())
+	}
+	if !strings.Contains(out.String(), "result    OK") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+func TestCheckFailsWhenTheModelIsNotOffered(t *testing.T) {
+	var out bytes.Buffer
+	env := map[string]string{"OLLAMA_API_KEY": "k", "OLLAMA_MODEL": "ghost"}
+	code := report(env, &out, &fakeLister{models: []string{"real", "other"}})
+	if code == 0 {
+		t.Fatal("an unknown model should fail the check")
+	}
+	if !strings.Contains(out.String(), "ghost is not a model") || !strings.Contains(out.String(), "real") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+func TestCheckFailsWhenTheEndpointIsUnreachable(t *testing.T) {
+	var out bytes.Buffer
+	env := map[string]string{"OLLAMA_API_KEY": "k", "OLLAMA_MODEL": "m"}
+	code := report(env, &out, &fakeLister{err: errors.New("dial tcp: connection refused")})
+	if code == 0 {
+		t.Fatal("an unreachable endpoint should fail the check")
+	}
+	if !strings.Contains(out.String(), "dial tcp: connection refused") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+// The report runs against the real client, pointed at a local server, so the
+// wiring is exercised end to end.
+func TestCheckUsesTheRealClient(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer k" {
+			t.Errorf("Authorization = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"data":[{"id":"m"}]}`))
+	}))
+	defer server.Close()
+
+	env := map[string]string{"OLLAMA_API_KEY": "k", "OLLAMA_MODEL": "m"}
+	backend := chat.NewWithEndpoints("k", "m", chat.Endpoints{ChatBase: server.URL})
+	var out bytes.Buffer
+	if code := report(env, &out, backend); code != 0 {
+		t.Fatalf("code = %d, output = %q", code, out.String())
+	}
+	if !strings.Contains(out.String(), "models    1 available") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+func TestCheckSurfacesAnHTTPRejection(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":{"message":"invalid api key"}}`))
+	}))
+	defer server.Close()
+
+	env := map[string]string{"OLLAMA_API_KEY": "k", "OLLAMA_MODEL": "m"}
+	backend := chat.NewWithEndpoints("k", "m", chat.Endpoints{ChatBase: server.URL})
+	var out bytes.Buffer
+	if code := report(env, &out, backend); code == 0 {
+		t.Fatal("a rejected key should fail the check")
+	}
+	if !strings.Contains(out.String(), "invalid api key") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+// Listing models does not authenticate, so the check must ask for a real
+// completion before it calls the key good.
+func TestCheckProbesTheChatEndpoint(t *testing.T) {
+	var out bytes.Buffer
+	env := map[string]string{"OLLAMA_API_KEY": "k", "OLLAMA_MODEL": "m"}
+	backend := &fakeLister{models: []string{"m"}}
+	if code := report(env, &out, backend); code != 0 {
+		t.Fatalf("code = %d, output = %q", code, out.String())
+	}
+	if !backend.pinged {
+		t.Fatal("the check called the key good without a chat completion")
+	}
+	if !strings.Contains(out.String(), "chat completion") {
+		t.Fatalf("output = %q", out.String())
+	}
+}
+
+func TestCheckFailsWhenTheChatEndpointRejectsTheKey(t *testing.T) {
+	var out bytes.Buffer
+	env := map[string]string{"OLLAMA_API_KEY": "bad", "OLLAMA_MODEL": "m"}
+	backend := &fakeLister{models: []string{"m"}, pingErr: errors.New("chat completion failed (HTTP 401): Unauthorized")}
+	if code := report(env, &out, backend); code == 0 {
+		t.Fatal("a rejected key should fail the check")
+	}
+	if !strings.Contains(out.String(), "HTTP 401") || !strings.Contains(out.String(), "Unauthorized") {
+		t.Fatalf("output = %q", out.String())
+	}
+	if strings.Contains(out.String(), "result    OK") {
+		t.Fatalf("output = %q", out.String())
 	}
 }

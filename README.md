@@ -45,6 +45,36 @@ OLLAMA_API_KEY=... OLLAMA_MODEL=... ./gochat
 `gochat --version` prints the version; `gochat --help` prints usage. Unknown
 arguments are ignored.
 
+`gochat --check` prints the effective configuration and then verifies the
+endpoint, without starting the full-screen UI:
+
+```sh
+gochat 0.1.12
+endpoint  https://ollama.com/v1
+model     deepseek-v4.1-flash
+api key   set (18 characters)
+models    18 available
+checking  chat completion with deepseek-v4.1-flash
+result    FAILED: chat completion failed (HTTP 401): Unauthorized
+```
+
+It exits non-zero when anything is wrong. The API key itself is never printed.
+Model listing alone does not authenticate — Ollama Cloud answers `/models`
+without a key — so the check also sends a one-token chat request, which is what
+makes the answer conclusive.
+
+### When a request fails
+
+Both front-ends print the reason the endpoint gave, so a failure is actionable:
+
+| Message | Meaning |
+| --- | --- |
+| `HTTP 401: Unauthorized` | The key is wrong, expired, or came from another `.env` |
+| `HTTP 404: model not found` | The model name is not offered; use `/model` |
+| `cannot reach ollama.com: dial tcp: lookup ollama.com: no such host` | DNS |
+| `cannot reach ollama.com: ... certificate signed by unknown authority` | TLS interception (a corporate proxy) |
+| `cannot reach ollama.com: ... connect: connection refused` / `i/o timeout` | A firewall, proxy, or VPN is blocking the connection |
+
 ### Tests
 
 ```sh

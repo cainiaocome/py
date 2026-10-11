@@ -194,8 +194,9 @@ func TestFailureBeforeFirstChunkRemovesTheEmptyAnswer(t *testing.T) {
 	if model.liveEntry != nil {
 		t.Fatal("the empty live answer should be removed")
 	}
+	// The cause is what makes the failure actionable, so it is on screen.
 	texts := strings.Join(entryTexts(model), "\n")
-	if !strings.Contains(texts, "Request failed.") {
+	if !strings.Contains(texts, "Request failed: boom") {
 		t.Fatalf("missing failure notice: %v", entryTexts(model))
 	}
 	for _, text := range entryTexts(model) {
@@ -221,7 +222,7 @@ func TestFailureAfterPartialKeepsThePartialText(t *testing.T) {
 	if !strings.Contains(texts, "half an answer") {
 		t.Fatalf("partial text was lost: %v", entryTexts(model))
 	}
-	if !strings.Contains(texts, "Request failed.") {
+	if !strings.Contains(texts, "Request failed: boom") {
 		t.Fatalf("missing failure notice: %v", entryTexts(model))
 	}
 }
