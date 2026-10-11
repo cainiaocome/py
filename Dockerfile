@@ -10,9 +10,9 @@ COPY internal ./internal
 ARG VERSION=0.1.0
 RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-s -w -X main.Version=${VERSION}" \
-    -o /out/pychat ./cmd/pychat
+    -o /out/gochat ./cmd/gochat
 
 FROM scratch
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY --from=build /out/pychat /pychat
-ENTRYPOINT ["/pychat"]
+COPY --from=build /out/gochat /gochat
+ENTRYPOINT ["/gochat"]

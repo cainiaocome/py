@@ -1,4 +1,4 @@
-# pychat (Go port)
+# gochat (Go port)
 
 A single-binary, full-screen terminal chat client for [Ollama
 Cloud](https://ollama.com), written in Go. This is a faithful port of the
@@ -34,26 +34,43 @@ third-party LLM SDK.
 Requires Go 1.27+.
 
 ```sh
-make build          # writes ./pychat
+make build          # writes ./gochat
 make test           # offline Go tests
 make lint           # go vet
 make run            # run from source
 
-OLLAMA_API_KEY=... OLLAMA_MODEL=... ./pychat
+OLLAMA_API_KEY=... OLLAMA_MODEL=... ./gochat
 ```
 
-`pychat --version` prints the version; `pychat --help` prints usage. Unknown
+`gochat --version` prints the version; `gochat --help` prints usage. Unknown
 arguments are ignored.
 
 ### Docker
 
 ```sh
 make image
-docker run --rm -it -e OLLAMA_API_KEY -e OLLAMA_MODEL pychat:local
+docker run --rm -it -e OLLAMA_API_KEY -e OLLAMA_MODEL gochat:local
 ```
 
 The image is a static binary on `scratch` with CA certificates, so TLS to
 Ollama works.
+
+## Releases
+
+Prebuilt binaries are attached to [GitHub
+releases](https://github.com/cainiaocome/py/releases) as `gochat-linux-x86_64`,
+`gochat-linux-arm64`, and `gochat-macos-arm64`, plus `SHA256SUMS`. Because Git
+tags are repository-wide and `v*` belongs to the Python project, the Go
+releases use their own `go-v*` namespace. Cut one with:
+
+```sh
+git tag -a go-v0.1.0 -m "gochat v0.1.0"
+git push origin go-v0.1.0
+```
+
+The tag runs `.github/workflows/release.yml`, which builds each target natively,
+smoke-tests `--version`, and publishes the assets. `go-v*` tags must point at a
+commit without a skip-CI marker, or GitHub silently skips the run.
 
 ## Configuration
 

@@ -1,0 +1,87 @@
+name: Release gochat binaries
+
+on:
+  push:
+    tags: ['go-v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            artifact: gochat-linux-x86_64
+          - runner: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            artifact: gochat-linux-arm64
+          - runner: macos-14
+            goos: darwin
+            goarch: arm64
+            artifact: gochat-macos-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Resolve the version
+        id: version
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          case "$REF" in
+            go-v*) echo "version=${REF#go-v}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "version=0.1.0" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - name: Build the standalone binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          mkdir -p release
+          go build -trimpath \
+            -ldflags "-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -o "release/${{ matrix.artifact }}" ./cmd/gochat
+      - name: Smoke test the binary
+        run: |
+          "release/${{ matrix.artifact }}" --version
+          "release/${{ matrix.artifact }}" --version | grep -q "gochat ${{ steps.version.outputs.version }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/go-v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: gochat ${{ github.ref_name }}
+          files: artifacts/*
+          generate_release_notes: true

@@ -1,4 +1,4 @@
-// Command pychat is a minimal streaming terminal chat client for Ollama Cloud.
+// Command gochat is a minimal streaming terminal chat client for Ollama Cloud.
 package main
 
 import (
@@ -63,7 +63,7 @@ func handleArguments(args []string) bool {
 	for _, arg := range args {
 		switch arg {
 		case "--version":
-			fmt.Printf("pychat %s\n", Version)
+			fmt.Printf("gochat %s\n", Version)
 			return true
 		case "--help", "-h":
 			printUsage()
@@ -74,7 +74,7 @@ func handleArguments(args []string) bool {
 }
 
 func printUsage() {
-	fmt.Println("usage: pychat [-h] [--version]")
+	fmt.Println("usage: gochat [-h] [--version]")
 	fmt.Println()
 	fmt.Println("Minimal streaming terminal chat with Ollama Cloud.")
 	fmt.Println()

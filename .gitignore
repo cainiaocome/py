@@ -1,5 +1,5 @@
 # Build output.
-/pychat
+/gochat
 /dist/
 *.test
 
