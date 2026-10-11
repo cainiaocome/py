@@ -6,9 +6,16 @@ current directory's ``.env``, then the home directory's ``.env``.
 ``AI_CHAT_ENV_FILE`` selects one explicit file instead of those defaults.
 
 Only a safe subset of shell syntax is supported: blank lines, ``#`` comments,
-an optional leading ``export``, ``KEY=value`` pairs, and single- or
-double-quoted values. Unlike the Docker launcher, the native parser never
-executes the file and never expands variables.
+an optional leading ``export``, ``KEY=value`` pairs, single- or double-quoted
+values, and a comment after a value. It never executes the file and never
+expands variables.
+
+The container launcher *sources* the file with a POSIX shell, so this parser reads
+that subset the same way rather than literally: ``KEY=secret # note`` is the
+credential ``secret`` followed by a comment, not ``secret # note``. Getting that
+wrong sends ``secret # note`` as an API key, which is a 401 rather than a typo.
+``tests/test_config.py`` asserts the two agree by running the same lines through
+``sh``.
 """
 
 from __future__ import annotations
@@ -52,11 +59,85 @@ def parse_env_file(path: Path) -> dict[str, str]:
         key = key.strip()
         if not _KEY.fullmatch(key):
             continue
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
-            value = value[1:-1]
+        value = _parse_value(value)
         values[key] = value
     return values
+
+
+def _parse_value(raw: str) -> str:
+    """Read the right-hand side of an assignment the way a POSIX shell reads it.
+
+    Quotes are removed and joined with the surrounding text, and a ``#`` that
+    starts a word begins a comment. The container launcher sources the file, so
+    this has to agree with it. Where a shell would reject the line -- unquoted
+    spaces, for instance -- this parser is deliberately more forgiving.
+    """
+    value = raw.strip()
+    text = ""
+    significant = 0
+
+    def append(segment: str, *, quoted: bool) -> None:
+        nonlocal text, significant
+        text += segment
+        if quoted or segment.strip(" \t"):
+            significant = len(text)
+
+    index = 0
+    while index < len(value):
+        character = value[index]
+        if character == "#" and (index == 0 or value[index - 1] in " \t"):
+            return text[:significant]
+        if character in "\"'":
+            closing = _closing_quote(value, index)
+            if closing < 0:
+                # An unterminated quote is not ours to interpret; keep it as written.
+                append(value[index:].rstrip(" \t"), quoted=False)
+                return text[:significant]
+            append(_unquote(value[index : closing + 1]), quoted=True)
+            index = closing + 1
+            continue
+        append(character, quoted=False)
+        index += 1
+    return text[:significant]
+
+
+def _closing_quote(value: str, start: int) -> int:
+    """Return the index of the quote closing the one at *start*, or -1.
+
+    Only a double quote takes backslash escapes.
+    """
+    quote = value[start]
+    index = start + 1
+    while index < len(value):
+        if quote == '"' and value[index] == "\\":
+            index += 2
+            continue
+        if value[index] == quote:
+            return index
+        index += 1
+    return -1
+
+
+def _unquote(segment: str) -> str:
+    """Strip the surrounding quotes and resolve the escapes they allow."""
+    inner = segment[1:-1]
+    if segment[0] == "'":
+        return inner
+    text = ""
+    index = 0
+    while index < len(inner):
+        if (
+            inner[index] == "\\"
+            and index + 1 < len(inner)
+            and inner[index + 1] in '"\\$`'
+        ):
+            index += 1
+            text += inner[index]
+            index += 1
+            continue
+        text += inner[index]
+        index += 1
+    return text
 
 
 def load_configuration(

@@ -1,3 +1,5 @@
+import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -128,3 +130,74 @@ def test_relative_explicit_file_resolves_from_working_directory(tmp_path, monkey
     config.load_configuration(environ, home=Path(tmp_path))
 
     assert environ["OLLAMA_MODEL"] == "explicit"
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("OLLAMA_API_KEY=plain", "plain"),
+        ("OLLAMA_API_KEY=plain   ", "plain"),
+        ('OLLAMA_API_KEY="quoted value"', "quoted value"),
+        ("OLLAMA_API_KEY='quoted value'", "quoted value"),
+        ("OLLAMA_API_KEY=secret # ollama cloud key", "secret"),
+        ('OLLAMA_API_KEY="secret"  # key', "secret"),
+        ("OLLAMA_API_KEY='secret' # key", "secret"),
+        ("OLLAMA_API_KEY=sec#ret", "sec#ret"),
+        ('OLLAMA_API_KEY="sec#ret"', "sec#ret"),
+        ('OLLAMA_API_KEY="  padded  "', "  padded  "),
+        ("OLLAMA_API_KEY=", ""),
+        ("OLLAMA_API_KEY=# nothing", ""),
+        ("OLLAMA_API_KEY=pre\"mid\"'post'", "premidpost"),
+        ('OLLAMA_API_KEY="a\\"b"', 'a"b'),
+        ("OLLAMA_API_KEY='a\\b'", "a\\b"),
+        ('OLLAMA_API_KEY="unclosed', '"unclosed'),
+        ("OLLAMA_API_KEY='secret'# key", "secret# key"),
+    ],
+)
+def test_parse_env_file_reads_values_the_way_a_shell_does(tmp_path, line, expected):
+    """A comment or quote after a value must not become part of the value."""
+    path = tmp_path / ".env"
+    path.write_text(line + "\n")
+
+    assert config.parse_env_file(path)["OLLAMA_API_KEY"] == expected
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "OLLAMA_API_KEY=plain",
+        "OLLAMA_API_KEY=secret # ollama cloud key",
+        'OLLAMA_API_KEY="secret" # key',
+        "OLLAMA_API_KEY='secret' # key",
+        'OLLAMA_API_KEY="quoted value"',
+        "OLLAMA_API_KEY='quoted value'",
+        "OLLAMA_API_KEY=sec#ret",
+        'OLLAMA_API_KEY="sec#ret"',
+        'OLLAMA_API_KEY="  padded  "',
+        "OLLAMA_API_KEY=",
+        "OLLAMA_API_KEY=pre\"mid\"'post'",
+        'OLLAMA_API_KEY="a\\"b"',
+        "export OLLAMA_API_KEY=exported",
+    ],
+)
+def test_parse_env_file_agrees_with_a_shell(tmp_path, line):
+    """The container launcher sources the file, so the two readers must agree.
+
+    This is the test that catches a native client sending ``secret # note`` as an
+    API key while the container sends ``secret``.
+    """
+    if shutil.which("sh") is None:
+        pytest.skip("no POSIX shell available to compare against")
+
+    path = tmp_path / ".env"
+    path.write_text(f"# leading comment\n{line}\nOLLAMA_MODEL=m\n")
+
+    exported = subprocess.run(
+        ["sh", "-c", '. ./.env; printf %s "$OLLAMA_API_KEY"'],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+    assert config.parse_env_file(path)["OLLAMA_API_KEY"] == exported

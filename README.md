@@ -48,21 +48,39 @@ container.
 ## Standalone binary
 
 Prebuilt binaries for Linux (x86_64, arm64) and macOS (Apple silicon) are
-attached to [GitHub releases](https://github.com/cainiaocome/py/releases).
-Download the file for your platform, make it executable, and run it:
+attached to [GitHub releases](https://github.com/cainiaocome/py/releases), as a
+raw executable and as a `.tar.gz` archive of the same file.
+
+Prefer the archive: a download loses the executable bit, because neither HTTP
+nor a GitHub release asset records file modes. `tar` does, so extracting one
+gives you something you can run straight away:
 
 ```sh
-chmod +x pychat-linux-x86_64
-OLLAMA_API_KEY=... OLLAMA_MODEL=... ./pychat-linux-x86_64
+tar xzf pychat-linux-x86_64.tar.gz        # writes ./pychat, already executable
+OLLAMA_API_KEY=... OLLAMA_MODEL=... ./pychat
 ```
+
+The raw `pychat-<platform>` assets are there for scripts, which have to
+`chmod +x` what they download:
+
+```sh
+curl -fsSLO https://github.com/cainiaocome/py/releases/latest/download/pychat-linux-x86_64
+chmod +x pychat-linux-x86_64
+```
+
+On macOS, downloading through a browser also tags the file as quarantined, and
+the extracted binary is unsigned, so Gatekeeper asks you to confirm it once.
+`curl` and `gh release download` do not set that attribute, and `xattr -d
+com.apple.quarantine ./pychat` clears it if it does appear.
 
 The binary reads configuration the same way as the Docker launcher: exported
 `OLLAMA_API_KEY`/`OLLAMA_MODEL` win, otherwise it loads `.env` from the current
 directory, then `$HOME/.env`, and `AI_CHAT_ENV_FILE` selects one explicit file.
-Unlike the launcher, the binary parses a safe subset of `.env` syntax (blank
-lines, `#` comments, an optional `export`, `KEY=value`, and single or double
-quotes); it never executes the file or expands variables. Run the binary with
-`--version` to print the version.
+It parses the safe subset of `.env` syntax the launcher's shell would act on
+(blank lines, `#` comments, an optional `export`, `KEY=value`, single or double
+quotes, and a comment after a value), so the same file yields the same
+credentials either way; it never executes the file or expands variables. Run the
+binary with `--version` to print the version.
 
 Build your own copy from a checkout (requires [uv](https://docs.astral.sh/uv/)):
 

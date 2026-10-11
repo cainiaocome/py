@@ -37,8 +37,14 @@ jobs:
         run: uv run pytest -q tests/test_binary.py
       - name: Stage the release asset
         run: |
-          mkdir -p release
+          # A download cannot carry a file mode, so the raw asset needs chmod +x.
+          # The archive records the mode, which is why it is the friendlier one.
+          mkdir -p release package
           cp dist/pychat "release/${{ matrix.artifact }}"
+          cp dist/pychat package/pychat
+          chmod 755 package/pychat
+          tar -czf "release/${{ matrix.artifact }}.tar.gz" -C package pychat
+          ls -l release
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

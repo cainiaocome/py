@@ -1,6 +1,6 @@
 [project]
 name = "ai-chat"
-version = "0.1.0"
+version = "0.1.1"
 description = "Minimal streaming terminal chat with Ollama Cloud"
 readme = "README.md"
 requires-python = ">=3.12"
