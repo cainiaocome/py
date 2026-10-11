@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"unicode"
 
 	"github.com/cainiaocome/py/internal/llm"
@@ -32,8 +33,11 @@ const plainInstructions = `You are a helpful assistant. Web access is disabled i
 
 var controlPattern = regexp.MustCompile(`[\x00-\x1f\x7f-\x9f]`)
 
-// Chat is a single conversation with one model.
+// Chat is a single conversation with one model. Its mutable state is guarded by
+// a mutex because Stream runs on its own goroutine while the UI may read the
+// model name or the tool state, or clear the conversation.
 type Chat struct {
+	mu         sync.Mutex
 	model      string
 	client     *llm.Client
 	web        *web.WebTools
@@ -71,10 +75,18 @@ func NewWithEndpoints(apiKey, model string, endpoints Endpoints) *Chat {
 }
 
 // ModelName returns the active model identifier.
-func (c *Chat) ModelName() string { return c.model }
+func (c *Chat) ModelName() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.model
+}
 
 // WebEnabled reports whether the web tools are available this session.
-func (c *Chat) WebEnabled() bool { return c.webEnabled }
+func (c *Chat) WebEnabled() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.webEnabled
+}
 
 // ListModels returns the models the endpoint advertises.
 func (c *Chat) ListModels(ctx context.Context) ([]string, error) {
@@ -88,6 +100,8 @@ func (c *Chat) SwitchModel(model string) error {
 	if model == "" || strings.ContainsFunc(model, unicode.IsSpace) {
 		return fmt.Errorf("enter a model name without whitespace")
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.model = model
 	return nil
 }
@@ -95,6 +109,8 @@ func (c *Chat) SwitchModel(model string) error {
 // EnableWeb turns on both tools without resetting context. It reports whether
 // this call changed anything.
 func (c *Chat) EnableWeb() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.webEnabled {
 		return false
 	}
@@ -103,7 +119,11 @@ func (c *Chat) EnableWeb() bool {
 }
 
 // Clear forgets the conversation history.
-func (c *Chat) Clear() { c.history = nil }
+func (c *Chat) Clear() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.history = nil
+}
 
 // Stream runs the agent loop. onDelta receives each fragment of the answer as
 // it arrives -- never the whole answer again, which would copy it once per
@@ -115,16 +135,17 @@ func (c *Chat) Stream(
 	onActivity func(string),
 	onDelta func(string),
 ) (string, error) {
+	model, webEnabled, history := c.snapshot()
 	instructions := plainInstructions
 	var tools []llm.Tool
-	if c.webEnabled {
+	if webEnabled {
 		instructions = webInstructions
 		tools = []llm.Tool{searchTool(), fetchTool()}
 	}
 
-	messages := make([]llm.Message, 0, len(c.history)+2)
+	messages := make([]llm.Message, 0, len(history)+2)
 	messages = append(messages, llm.Message{Role: "system", Content: instructions})
-	messages = append(messages, c.history...)
+	messages = append(messages, history...)
 	messages = append(messages, llm.Message{Role: "user", Content: prompt})
 
 	var completed []string
@@ -137,7 +158,7 @@ func (c *Chat) Stream(
 	soFar := func() string { return joinText(completed, strings.Join(turn, "")) }
 
 	for {
-		assistant, err := c.client.StreamChat(ctx, c.model, messages, tools, func(chunk string) {
+		assistant, err := c.client.StreamChat(ctx, model, messages, tools, func(chunk string) {
 			turn = append(turn, chunk)
 			emit(chunk)
 		})
@@ -177,8 +198,22 @@ func (c *Chat) Stream(
 		}
 	}
 
+	// The turn used a snapshot of the conversation, so committing the result
+	// must not depend on what the rest of the program did meanwhile.
+	c.mu.Lock()
 	c.history = messages[1:] // drop the system instructions
+	c.mu.Unlock()
 	return soFar(), nil
+}
+
+// snapshot reads the conversation state in one go. Stream takes it once so a
+// model switch or a Clear during a response cannot tear the turn in half.
+func (c *Chat) snapshot() (model string, webEnabled bool, history []llm.Message) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	history = make([]llm.Message, len(c.history))
+	copy(history, c.history)
+	return c.model, c.webEnabled, history
 }
 
 func (c *Chat) runTool(ctx context.Context, call llm.ToolCall) map[string]any {

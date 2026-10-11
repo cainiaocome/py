@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cainiaocome/py/internal/llm"
 )
@@ -468,5 +469,54 @@ func TestCancellationPropagatesAndPreservesHistory(t *testing.T) {
 	last := requests[len(requests)-1].Messages
 	if len(last) != 4 || last[3].Content != "third" {
 		t.Fatalf("a cancelled turn should not be retained: %+v", last)
+	}
+}
+
+// TestChatIsSafeForConcurrentUse hammers the state the UI touches while a
+// response is in flight: the model name, the tool switch, the model switch and
+// Clear all run concurrently with Stream, which reads them when it snapshots
+// the conversation and writes the history back when the turn ends. The race
+// detector is the assertion.
+func TestChatIsSafeForConcurrentUse(t *testing.T) {
+	c := newTestChat(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/models" {
+			fmt.Fprint(w, `{"data":[{"id":"m"}]}`)
+			return
+		}
+		// Hold the connection open so the mutations really do overlap the
+		// snapshot at the start and the commit at the end.
+		time.Sleep(25 * time.Millisecond)
+		sseText(w, "answer")
+	})
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := 0; i < 4; i++ {
+			if _, err := c.Stream(context.Background(), "q", nil, func(string) {}); err != nil {
+				t.Errorf("Stream: %v", err)
+			}
+		}
+	}()
+
+hammer:
+	for {
+		select {
+		case <-done:
+			break hammer
+		default:
+		}
+		c.ModelName()
+		c.WebEnabled()
+		c.EnableWeb()
+		if err := c.SwitchModel("m2"); err != nil {
+			t.Errorf("SwitchModel: %v", err)
+		}
+		c.Clear()
+	}
+
+	// The conversation is still usable afterwards.
+	if _, err := c.Stream(context.Background(), "after", nil, nil); err != nil {
+		t.Fatalf("Stream after the race: %v", err)
 	}
 }
