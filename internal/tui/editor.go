@@ -27,6 +27,18 @@ func (m Mode) Label() string {
 	}
 }
 
+// mask is the modeMask bit for this mode, used to look up key bindings.
+func (m Mode) mask() modeMask {
+	switch m {
+	case ModeNormal:
+		return inNormal
+	case ModeReplace:
+		return inReplace
+	default:
+		return inInsert
+	}
+}
+
 // Editor is a modal, multi-line text buffer with the vim subset this app uses.
 // Most normal-mode letters are claimed by the app for scrolling, so only the
 // editing motions live here.
