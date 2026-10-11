@@ -293,7 +293,7 @@ func TestStreamRunsToolAndFollowsUp(t *testing.T) {
 }
 
 func TestStreamJoinsModelTurnsWithABlankLine(t *testing.T) {
-	var text strings.Builder
+	var streamed []string
 	c := newTestChat(t, chatHandler(t, nil, func(call int, _ capturedRequest, w http.ResponseWriter) {
 		if call == 1 {
 			w.Header().Set("Content-Type", "text/event-stream")
@@ -306,9 +306,8 @@ func TestStreamJoinsModelTurnsWithABlankLine(t *testing.T) {
 	}))
 
 	c.EnableWeb()
-	got, err := c.Stream(context.Background(), "q", nil, func(full string) {
-		text.Reset()
-		text.WriteString(full)
+	got, err := c.Stream(context.Background(), "q", nil, func(delta string) {
+		streamed = append(streamed, delta)
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -316,8 +315,85 @@ func TestStreamJoinsModelTurnsWithABlankLine(t *testing.T) {
 	if got != "thinking\n\nanswer" {
 		t.Fatalf("text = %q", got)
 	}
-	if text.String() != "thinking\n\nanswer" {
-		t.Fatalf("final callback = %q", text.String())
+	// The whole contract of the callback: it reports fragments, and putting them
+	// back together has to reproduce the returned text exactly.
+	if joined := strings.Join(streamed, ""); joined != got {
+		t.Fatalf("deltas %q join to %q, but Stream returned %q", streamed, joined, got)
+	}
+	if len(streamed) < 3 {
+		t.Fatalf("the answer should have arrived in fragments, got %q", streamed)
+	}
+}
+
+// TestStreamDeltasReproduceTheReturnedText covers every shape the agent loop
+// can take, because the UI accumulates these fragments and never sees the
+// returned text until the end.
+func TestStreamDeltasReproduceTheReturnedText(t *testing.T) {
+	cases := []struct {
+		name    string
+		tools   bool
+		handler func(call int, w http.ResponseWriter)
+	}{
+		{
+			name: "single turn",
+			handler: func(call int, w http.ResponseWriter) {
+				sseText(w, "hello world")
+			},
+		},
+		{
+			name:  "two turns",
+			tools: true,
+			handler: func(call int, w http.ResponseWriter) {
+				if call == 1 {
+					w.Header().Set("Content-Type", "text/event-stream")
+					fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"first\"}}]}\n\n")
+					fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"web_search\",\"arguments\":\"{\\\"query\\\":\\\"q\\\"}\"}}]}}]}\n\n")
+					fmt.Fprint(w, "data: [DONE]\n\n")
+					return
+				}
+				sseText(w, "second")
+			},
+		},
+		{
+			name:  "a turn with no text before the tool call",
+			tools: true,
+			handler: func(call int, w http.ResponseWriter) {
+				if call == 1 {
+					w.Header().Set("Content-Type", "text/event-stream")
+					fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"c\",\"function\":{\"name\":\"web_search\",\"arguments\":\"{\\\"query\\\":\\\"q\\\"}\"}}]}}]}\n\n")
+					fmt.Fprint(w, "data: [DONE]\n\n")
+					return
+				}
+				sseText(w, "only text")
+			},
+		},
+		{
+			name: "no text at all",
+			handler: func(call int, w http.ResponseWriter) {
+				sseText(w, "")
+			},
+		},
+	}
+
+	for _, test := range cases {
+		t.Run(test.name, func(t *testing.T) {
+			c := newTestChat(t, chatHandler(t, nil, func(call int, _ capturedRequest, w http.ResponseWriter) {
+				test.handler(call, w)
+			}))
+			if test.tools {
+				c.EnableWeb()
+			}
+			var streamed []string
+			got, err := c.Stream(context.Background(), "q", nil, func(delta string) {
+				streamed = append(streamed, delta)
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if joined := strings.Join(streamed, ""); joined != got {
+				t.Fatalf("deltas %q join to %q, but Stream returned %q", streamed, joined, got)
+			}
+		})
 	}
 }
 

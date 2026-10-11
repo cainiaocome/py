@@ -105,14 +105,15 @@ func (c *Chat) EnableWeb() bool {
 // Clear forgets the conversation history.
 func (c *Chat) Clear() { c.history = nil }
 
-// Stream runs the agent loop. onText receives the full text so far (joined
-// across model turns) and onActivity receives a one-line tool status. It returns
-// the final text. History is only committed on a successful turn.
+// Stream runs the agent loop. onDelta receives each fragment of the answer as
+// it arrives -- never the whole answer again, which would copy it once per
+// token -- and onActivity receives a one-line tool status. It returns the final
+// text, which is exactly the concatenation of every delta.
 func (c *Chat) Stream(
 	ctx context.Context,
 	prompt string,
 	onActivity func(string),
-	onText func(string),
+	onDelta func(string),
 ) (string, error) {
 	instructions := plainInstructions
 	var tools []llm.Tool
@@ -127,29 +128,35 @@ func (c *Chat) Stream(
 	messages = append(messages, llm.Message{Role: "user", Content: prompt})
 
 	var completed []string
-	current := ""
-	emit := func() {
-		text := joinText(completed, current)
-		if onText != nil {
-			onText(text)
+	var turn []string
+	emit := func(text string) {
+		if text != "" && onDelta != nil {
+			onDelta(text)
 		}
 	}
+	soFar := func() string { return joinText(completed, strings.Join(turn, "")) }
 
 	for {
-		assistant, err := c.client.StreamChat(ctx, c.model, messages, tools, func(delta string) {
-			current += delta
-			emit()
+		assistant, err := c.client.StreamChat(ctx, c.model, messages, tools, func(chunk string) {
+			turn = append(turn, chunk)
+			emit(chunk)
 		})
 		if err != nil {
-			return joinText(completed, current), err
+			return soFar(), err
 		}
 		messages = append(messages, assistant)
-		if current != "" {
-			completed = append(completed, current)
-			current = ""
+		text := strings.Join(turn, "")
+		turn = nil
+		if text != "" {
+			completed = append(completed, text)
 		}
 		if len(assistant.ToolCalls) == 0 {
 			break
+		}
+		if text != "" {
+			// joinText separates turns with a blank line, so the delta stream has
+			// to carry that separator as well.
+			emit("\n\n")
 		}
 		for _, call := range assistant.ToolCalls {
 			if onActivity != nil {
@@ -171,7 +178,7 @@ func (c *Chat) Stream(
 	}
 
 	c.history = messages[1:] // drop the system instructions
-	return joinText(completed, current), nil
+	return soFar(), nil
 }
 
 func (c *Chat) runTool(ctx context.Context, call llm.ToolCall) map[string]any {

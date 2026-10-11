@@ -66,6 +66,9 @@ type Session interface {
 	SwitchModel(model string) error
 	EnableWeb() bool
 	Clear()
+	// Stream runs one turn. onActivity receives a one-line tool status and
+	// onText receives each fragment of the answer as it arrives; concatenating
+	// those fragments yields the returned text. Both may be nil.
 	Stream(ctx context.Context, prompt string, onActivity, onText func(string)) (string, error)
 }
 
@@ -94,6 +97,11 @@ type Model struct {
 	completions     []string
 	completionIndex int
 	lastModels      []string
+
+	// liveChunks accumulates the answer while it streams. Only the joined text
+	// is handed to the transcript, so a long answer is copied once per repaint
+	// instead of once per token.
+	liveChunks []string
 
 	stream    chan streamEvent
 	cancel    context.CancelFunc
@@ -181,9 +189,10 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 		return nextStream(m.stream)
 	case eventDelta:
 		if m.liveEntry != nil {
+			m.liveChunks = append(m.liveChunks, event.text)
 			now := time.Now()
 			if m.lastPaint.IsZero() || now.Sub(m.lastPaint) >= liveRefreshInterval {
-				m.liveEntry.setText(event.text)
+				m.liveEntry.setText(strings.Join(m.liveChunks, ""))
 				m.linesDirty = true
 				m.lastPaint = now
 			}
@@ -199,6 +208,9 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 			m.liveEntry = nil
 			m.linesDirty = true
 		}
+		// The returned text is authoritative, so anything still buffered here is
+		// already accounted for.
+		m.liveChunks = nil
 		m.stream = nil
 		m.cancel = nil
 		m.status = "Ready"
@@ -349,6 +361,7 @@ func (m *Model) startResponse(prompt string) tea.Cmd {
 	m.appendStyled("Assistant ["+m.chat.ModelName()+"]", styleHeader)
 	m.liveEntry = newMarkdownEntry("")
 	m.liveEntry.live = true
+	m.liveChunks = nil
 	m.entries = append(m.entries, m.liveEntry)
 	m.linesDirty = true
 	m.status = "Responding · Ctrl+C to interrupt"
