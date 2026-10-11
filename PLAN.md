@@ -306,3 +306,57 @@ https://github.com/cainiaocome/py/actions/runs/38094852816 published
 ghcr.io/cainiaocome/py:v0.1.0 (ghcr.io/cainiaocome/py@sha256:05ef4289448c5b7766516923779bb787c3fa5b083f0fd8e73afe7f0169f80dc7). The downloaded Linux
 asset's sha256 matches `SHA256SUMS` (2347ab9f...) and `--version` prints
 `pychat 0.1.0`.
+
+### v0.1.1 release: .env parity with the launcher, and archives
+
+The standalone binary and the container launcher disagreed about `.env` syntax.
+`scripts/py` *sources* the file with a POSIX shell (`set -a; . "$config_file"`),
+which strips a comment after a value and removes quotes; `parse_env_file` read the
+line literally and only removed quotes that wrapped the whole value. The same
+unmodified file therefore authenticated in the container and returned `401
+Unauthorized` from the binary:
+
+```
+OLLAMA_API_KEY=secret # ollama cloud key
+shell  -> secret
+pychat -> "secret # ollama cloud key"
+```
+
+`_parse_value` now reads a value the way a shell does (quotes are removed and
+joined with the surrounding text; a `#` that starts a word begins a comment; a
+`#` inside a value such as `sec#ret` does not). `tests/test_config.py` runs the
+same lines through `/bin/sh` and asserts both readers agree, so this cannot drift
+again. The one deliberate difference left is variable expansion, which the native
+parser does not do.
+
+Releases also publish a `.tar.gz` beside the raw binary: a download cannot carry a
+file mode, while a tar archive records one, so extracting the archive leaves an
+executable `pychat` and no `chmod +x` is needed.
+
+Validated: `make lint test` green (170 tests), `make binary` plus
+`tests/test_binary.py` green, and the frozen binary prints
+`Model: deepseek-v4.1-flash` from a commented and quoted `.env`. Actions
+https://github.com/cainiaocome/py/actions/runs/38132346795 (test, binary, image)
+succeeded; tag `v0.1.1` ran
+https://github.com/cainiaocome/py/actions/runs/38132461327, which published
+`pychat-linux-x86_64` (31,126,824 bytes), `pychat-linux-arm64` (29,134,688),
+`pychat-macos-arm64` (26,123,360), their `.tar.gz` archives and `SHA256SUMS`.
+Image https://github.com/cainiaocome/py/actions/runs/38132461328 published
+`ghcr.io/cainiaocome/py:v0.1.1`
+(ghcr.io/cainiaocome/py@sha256:f7911dca2e761c883550053814cdd9e703526f3d1d7a136b9630f5278d2b388b).
+The downloaded `pychat-linux-x86_64.tar.gz` matches `SHA256SUMS`, extracts as
+`-rwxr-xr-x`, and `--version` prints `pychat 0.1.1`.
+
+### Go port: gochat releases
+
+The Go port lives on the orphan `golang` branch and releases under its own
+`go-v*` tag namespace. Each change gets its own release there, as that branch's
+`AGENTS.md` requires. `go-v0.1.11` (bubbles/viewport owns the transcript window),
+`go-v0.1.12` (a failed request now says why, plus `gochat --check`),
+`go-v0.1.13` (`.env` parsed the way the sourcing shell does) and `go-v0.1.14`
+(`.tar.gz` archives beside the raw binaries, so no `chmod +x`) were validated by
+downloading each asset, checking it against `SHA256SUMS`, and running the six PTY
+acceptance harnesses against the extracted binary. The `go-v0.1.14` runs are
+https://github.com/cainiaocome/py/actions/runs/38132558855 (Go) and
+https://github.com/cainiaocome/py/actions/runs/38132618142 (release); the archive
+extracts as `-rwxr-xr-x` and `--version` prints `gochat 0.1.14`.
