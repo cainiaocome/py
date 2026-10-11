@@ -49,7 +49,7 @@ arguments are ignored.
 endpoint, without starting the full-screen UI:
 
 ```sh
-gochat 0.1.12
+gochat 0.1.13
 endpoint  https://ollama.com/v1
 model     deepseek-v4.1-flash
 api key   set (18 characters)
@@ -126,9 +126,22 @@ Credentials are resolved the same way as the Python launcher:
 4. `AI_CHAT_ENV_FILE` selects one explicit file instead of all of the above.
 
 The native parser supports a safe subset of shell syntax: blank lines, `#`
-comments, an optional leading `export`, `KEY=value` pairs, and single- or
-double-quoted values. It never executes the file or expands variables. Blank
-values fall through to later files.
+comments, an optional leading `export`, `KEY=value` pairs, single- or
+double-quoted values, and a comment after a value. Blank values fall through to
+later files.
+
+The container launcher *sources* the file with a POSIX shell, so the native
+parser reads that subset the same way rather than literally: `KEY=secret # note`
+is the credential `secret` followed by a comment, not `secret # note`. A
+`config` test asserts the two agree by running the same lines through `sh`. The
+one deliberate difference is that the native parser never executes the file and
+never expands variables, so `KEY=$OTHER` stays literal — export the real value
+instead, or let the container launcher do it.
+
+A `.env` written for one launcher and read by the other is the usual cause of a
+`401`. `gochat --check` reports the length of the resolved key and calls out a
+value that still carries a quote, a comment or a variable reference, without ever
+printing it.
 
 ## Key bindings
 

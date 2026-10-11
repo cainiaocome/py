@@ -67,6 +67,13 @@ following when touching the code.
   cannot know (whether new output should pull the window down with it).
   `syncViewport` mirrors the model into it once per message from `Update`,
   which is also what keeps `View` free of bookkeeping.
+- **Two launchers, one credential.** The container entry point sources the
+  `.env` with `sh`; the native parser reads it. Anything the shell would strip --
+  a comment after a value, the quotes around it -- must be stripped here too, or
+  the same file authenticates in one and 401s in the other. `config`'s
+  `TestParseEnvFileAgreesWithAShell` runs both over the same lines. The remaining
+  deliberate difference is variable expansion, which the native parser refuses to
+  do; `--check` says so when a value still contains `$`.
 - **A failure must say why.** Never replace an error with advice: "check your
   connection, API key and model" is not something a user can act on. Transport
   errors name the host; HTTP errors carry the server's reason (bounded to one

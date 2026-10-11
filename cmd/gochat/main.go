@@ -21,7 +21,7 @@ import (
 // Version is overridable at build time:
 //
 //	go build -ldflags "-X main.Version=1.2.3"
-var Version = "0.1.12"
+var Version = "0.1.13"
 
 // checkTimeout bounds --check so an unreachable endpoint reports instead of
 // hanging.
@@ -136,6 +136,15 @@ func report(env map[string]string, out io.Writer, backend checker) int {
 		fmt.Fprintln(out, "result    FAILED: set OLLAMA_API_KEY and OLLAMA_MODEL, then run again")
 		return 1
 	}
+	// A credential that carries a quote, a shell variable or a space is usually
+	// not a credential: it is the rest of a .env line that a shell would have
+	// stripped. Say so before the network round trip, because the failure it
+	// causes is a bare 401.
+	for _, name := range config.CredentialNames {
+		if hint := credentialHint(name, strings.TrimSpace(env[name])); hint != "" {
+			fmt.Fprintf(out, "hint      %s\n", hint)
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), checkTimeout)
 	defer cancel()
@@ -159,6 +168,20 @@ func report(env map[string]string, out io.Writer, backend checker) int {
 	}
 	fmt.Fprintln(out, "result    OK: the endpoint answered and the API key works")
 	return 0
+}
+
+// credentialHint describes a credential that looks like a parsing artifact. It
+// never quotes the value.
+func credentialHint(name, value string) string {
+	switch {
+	case strings.ContainsAny(value, " \t"):
+		return name + " contains whitespace, which a trailing comment in the .env would produce"
+	case strings.ContainsAny(value, "$`"):
+		return name + " contains a shell variable reference; the container launcher expands it and this binary does not, so export the value instead"
+	case strings.ContainsAny(value, "\"'\""):
+		return name + " contains a quote, which usually means the .env quoting is unbalanced"
+	}
+	return ""
 }
 
 // firstModels lists up to limit model names for a hint.

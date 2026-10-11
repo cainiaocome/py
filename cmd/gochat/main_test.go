@@ -222,3 +222,47 @@ func TestCheckFailsWhenTheChatEndpointRejectsTheKey(t *testing.T) {
 		t.Fatalf("output = %q", out.String())
 	}
 }
+
+// A value carrying a comment, a quote or a shell variable is not a credential,
+// and the 401 it causes says nothing about why. The check has to name it, without
+// ever printing the value.
+func TestCheckWarnsAboutACredentialThatLooksMispared(t *testing.T) {
+	cases := []struct {
+		name  string
+		value string
+		want  string
+	}{
+		{"trailing comment", "secret # my key", "contains whitespace"},
+		{"unbalanced quote", `"secret`, "contains a quote"},
+		{"shell reference", "${MY_KEY}", "shell variable reference"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			env := map[string]string{"OLLAMA_API_KEY": testCase.value, "OLLAMA_MODEL": "m"}
+			var out bytes.Buffer
+			report(env, &out, &fakeLister{models: []string{"m"}})
+			if !strings.Contains(out.String(), testCase.want) {
+				t.Fatalf("output = %q, want %q", out.String(), testCase.want)
+			}
+			if strings.Contains(out.String(), "secret") {
+				t.Fatalf("the value leaked into the report: %q", out.String())
+			}
+		})
+	}
+}
+
+func TestCheckDoesNotWarnAboutAWellFormedCredential(t *testing.T) {
+	// The shape Ollama Cloud issues: 32 hex digits, a dot, then 24 characters.
+	key := "0123456789abcdef0123456789abcdef.Abcdefghijklmnopqrstuvwx"
+	var out bytes.Buffer
+	env := map[string]string{"OLLAMA_API_KEY": key, "OLLAMA_MODEL": "m"}
+	if code := report(env, &out, &fakeLister{models: []string{"m"}}); code != 0 {
+		t.Fatalf("code = %d, output = %q", code, out.String())
+	}
+	if strings.Contains(out.String(), "hint") {
+		t.Fatalf("a well-formed key should not be questioned: %q", out.String())
+	}
+	if !strings.Contains(out.String(), "set (57 characters)") {
+		t.Fatalf("output = %q", out.String())
+	}
+}

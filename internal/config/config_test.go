@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -197,5 +198,88 @@ func TestLoadKeepsNonBlankValuesWhileFillingBlanks(t *testing.T) {
 	}
 	if env["OLLAMA_MODEL"] != "file-model" {
 		t.Fatalf("blank value was not filled: %v", env)
+	}
+}
+
+// The container launcher sources the .env with a POSIX shell, so the native
+// parser has to read the same subset the same way. These are the shapes that
+// differ: a comment after a value, quotes that a shell removes, a # that does
+// not start a comment.
+func TestParseEnvFileMatchesShellQuoting(t *testing.T) {
+	cases := []struct {
+		name string
+		line string
+		want string
+	}{
+		{"plain", "OLLAMA_API_KEY=plain", "plain"},
+		{"trailing spaces", "OLLAMA_API_KEY=plain   ", "plain"},
+		{"double quoted", `OLLAMA_API_KEY="quoted value"`, "quoted value"},
+		{"single quoted", "OLLAMA_API_KEY='quoted value'", "quoted value"},
+		{"comment after a value", "OLLAMA_API_KEY=secret # ollama cloud key", "secret"},
+		{"comment after a quoted value", `OLLAMA_API_KEY="secret"  # key`, "secret"},
+		{"comment after a single quoted value", "OLLAMA_API_KEY='secret' # key", "secret"},
+		{"a hash straight after a quote is not a comment", "OLLAMA_API_KEY='secret'# key", "secret# key"},
+		{"hash without a leading space is not a comment", "OLLAMA_API_KEY=sec#ret", "sec#ret"},
+		{"hash inside quotes is not a comment", `OLLAMA_API_KEY="sec#ret"`, "sec#ret"},
+		{"quoted spaces are kept", `OLLAMA_API_KEY="  padded  "`, "  padded  "},
+		{"empty", "OLLAMA_API_KEY=", ""},
+		{"quotes join the surrounding text", `OLLAMA_API_KEY=pre"mid"'post'`, "premidpost"},
+		{"escaped quote", `OLLAMA_API_KEY="a\"b"`, `a"b`},
+		{"backslash inside single quotes is literal", `OLLAMA_API_KEY='a\b'`, `a\b`},
+		{"unterminated quote is kept", `OLLAMA_API_KEY="unclosed`, `"unclosed`},
+		{"a value that is only a comment", "OLLAMA_API_KEY=# nothing", ""},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), ".env")
+			writeFile(t, path, testCase.line+"\n")
+			if got := ParseEnvFile(path)["OLLAMA_API_KEY"]; got != testCase.want {
+				t.Fatalf("ParseEnvFile(%q) = %q, want %q", testCase.line, got, testCase.want)
+			}
+		})
+	}
+}
+
+// The same table, checked against a real shell. This is the test that would have
+// caught a native client sending "secret # note" as an API key while the
+// container sent "secret".
+func TestParseEnvFileAgreesWithAShell(t *testing.T) {
+	shell, err := exec.LookPath("sh")
+	if err != nil {
+		t.Skip("no POSIX shell available to compare against")
+	}
+	lines := []string{
+		`OLLAMA_API_KEY=plain`,
+		`OLLAMA_API_KEY=secret # ollama cloud key`,
+		`OLLAMA_API_KEY="secret" # key`,
+		`OLLAMA_API_KEY='secret' # key`,
+		`OLLAMA_API_KEY="quoted value"`,
+		`OLLAMA_API_KEY='quoted value'`,
+		`OLLAMA_API_KEY=sec#ret`,
+		`OLLAMA_API_KEY="sec#ret"`,
+		`OLLAMA_API_KEY="  padded  "`,
+		`OLLAMA_API_KEY=`,
+		`OLLAMA_API_KEY=pre"mid"'post'`,
+		`OLLAMA_API_KEY="a\"b"`,
+		`export OLLAMA_API_KEY=exported`,
+	}
+	for _, line := range lines {
+		t.Run(line, func(t *testing.T) {
+			directory := t.TempDir()
+			path := filepath.Join(directory, ".env")
+			writeFile(t, path, "# leading comment\n"+line+"\nOLLAMA_MODEL=m\n")
+
+			// What a shell exports when it sources the file.
+			command := exec.Command(shell, "-c", `. ./.env; printf %s "$OLLAMA_API_KEY"`)
+			command.Dir = directory
+			exported, err := command.Output()
+			if err != nil {
+				t.Fatalf("the shell rejected %q: %v", line, err)
+			}
+
+			if got := ParseEnvFile(path)["OLLAMA_API_KEY"]; got != string(exported) {
+				t.Fatalf("ParseEnvFile(%q) = %q, but a shell exported %q", line, got, exported)
+			}
+		})
 	}
 }

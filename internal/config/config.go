@@ -3,10 +3,13 @@
 //
 // Values already present and non-blank in the environment win, then the current
 // directory's .env, then the home directory's .env. AI_CHAT_ENV_FILE selects one
-// explicit file instead of those defaults. Only a safe subset of shell syntax is
-// supported: blank lines, # comments, an optional leading export, KEY=value
-// pairs, and single- or double-quoted values. The parser never executes the file
-// and never expands variables.
+// explicit file instead of those defaults.
+//
+// The container launcher sources the file with a POSIX shell, so this parser
+// reads the same subset the same way: blank lines, comments, an optional leading
+// export, KEY=value pairs, single- or double-quoted values, and a comment after a
+// value. It never executes the file and never expands variables, which is the one
+// place the two launchers can still disagree.
 package config
 
 import (
@@ -77,14 +80,7 @@ func ParseEnvFile(path string) map[string]string {
 		if !keyPattern.MatchString(key) {
 			continue
 		}
-		value = strings.TrimSpace(value)
-		if len(value) >= 2 {
-			quote := value[0]
-			if (quote == '"' || quote == '\'') && value[len(value)-1] == quote {
-				value = value[1 : len(value)-1]
-			}
-		}
-		values[key] = value
+		values[key] = parseValue(value)
 	}
 	return values
 }
@@ -131,6 +127,85 @@ func Load(env map[string]string, cwd, home string) error {
 		apply(env, homePath)
 	}
 	return nil
+}
+
+// parseValue reads the right-hand side of an assignment the way a POSIX shell
+// reads a value: quotes are removed and concatenated with the surrounding text,
+// and a # that starts a word begins a comment. The container launcher sources the
+// file, so this has to agree with it -- `KEY=secret # note` is a credential
+// followed by a comment to a shell and `secret # note` to a naive parser, which
+// is a 401 rather than a typo.
+//
+// Where a shell would reject the line -- unquoted spaces, for instance -- this
+// parser is deliberately more forgiving.
+func parseValue(raw string) string {
+	value := strings.TrimSpace(raw)
+	var text strings.Builder
+	significant := 0 // unquoted trailing blanks after this point are dropped
+
+	appendSegment := func(segment string, quoted bool) {
+		text.WriteString(segment)
+		if quoted || strings.Trim(segment, " \t") != "" {
+			significant = text.Len()
+		}
+	}
+
+	for index := 0; index < len(value); {
+		switch character := value[index]; {
+		case character == '#' && (index == 0 || value[index-1] == ' ' || value[index-1] == '\t'):
+			return text.String()[:significant]
+		case character == '"' || character == '\'':
+			closing := closingQuote(value, index)
+			if closing < 0 {
+				// An unterminated quote is not ours to interpret; keep it as written.
+				appendSegment(strings.TrimRight(value[index:], " \t"), false)
+				return text.String()[:significant]
+			}
+			appendSegment(unquote(value[index:closing+1]), true)
+			index = closing + 1
+		default:
+			appendSegment(string(character), false)
+			index++
+		}
+	}
+	return text.String()[:significant]
+}
+
+// closingQuote returns the index of the quote that closes the one at start, or -1.
+// Only a double quote takes backslash escapes.
+func closingQuote(value string, start int) int {
+	quote := value[start]
+	for index := start + 1; index < len(value); index++ {
+		if quote == '"' && value[index] == '\\' {
+			index++
+			continue
+		}
+		if value[index] == quote {
+			return index
+		}
+	}
+	return -1
+}
+
+// unquote strips the surrounding quotes from a segment and resolves the escapes
+// a double-quoted string allows.
+func unquote(segment string) string {
+	inner := segment[1 : len(segment)-1]
+	if segment[0] == '\'' {
+		return inner
+	}
+	var text strings.Builder
+	for index := 0; index < len(inner); index++ {
+		if character := inner[index]; character == '\\' && index+1 < len(inner) {
+			if next := inner[index+1]; next == '"' || next == '\\' || next == '$' || next == '`' {
+				index++
+				text.WriteByte(next)
+				continue
+			}
+		}
+		text.WriteByte(inner[index])
+	}
+	return text.String()
 }
 
 func apply(env map[string]string, path string) {
