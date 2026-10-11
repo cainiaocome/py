@@ -102,15 +102,31 @@ Ollama works.
 ## Releases
 
 Prebuilt binaries are attached to [GitHub
-releases](https://github.com/cainiaocome/py/releases) as `gochat-linux-x86_64`,
-`gochat-linux-arm64`, and `gochat-macos-arm64`, plus `SHA256SUMS`. Because Git
-tags are repository-wide and `v*` belongs to the Python project, the Go
-releases use their own `go-v*` namespace. Cut one with:
+releases](https://github.com/cainiaocome/py/releases) as a raw executable and as a
+`.tar.gz` archive of the same file, for `linux-x86_64`, `linux-arm64` and
+`macos-arm64`, plus `SHA256SUMS`. Because Git tags are repository-wide and `v*`
+belongs to the Python project, the Go releases use their own `go-v*` namespace.
+Cut one with:
 
 ```sh
-git tag -a go-v0.1.1 -m "gochat v0.1.1"
-git push origin go-v0.1.1
+git tag -a go-v0.1.14 -m "gochat v0.1.14"
+git push origin go-v0.1.14
 ```
+
+Prefer the archive: a download loses the executable bit, because neither HTTP
+nor a GitHub release asset records file modes. `tar` does, so extracting one gives
+you something you can run straight away:
+
+```sh
+tar xzf gochat-linux-x86_64.tar.gz        # writes ./gochat, already executable
+./gochat
+```
+
+The raw `gochat-<platform>` assets are there for scripts, which have to
+`chmod +x` what they download. On macOS, downloading through a browser also tags
+the file as quarantined, and the binary is unsigned, so Gatekeeper asks you to
+confirm it once; `curl` and `gh release download` do not set that attribute, and
+`xattr -d com.apple.quarantine ./gochat` clears it if it does appear.
 
 The tag runs `.github/workflows/release.yml`, which builds each target natively,
 smoke-tests `--version`, and publishes the assets. `go-v*` tags must point at a
