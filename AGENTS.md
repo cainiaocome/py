@@ -43,8 +43,22 @@ as its own project: do not merge it into `main`, and keep the Python project on
   If a request ever asks for Ctrl+D to exit (or to stop scrolling at the end),
   remind me of this decision before changing it.
 
-## Testing the UI
+## Cursor and IME
 
+- The real (hardware) cursor must rest on the editor caret on every rendered
+  frame, even though the visible cursor shapes are painted. Terminals place the
+  IME candidate window for Chinese, Japanese and Korean input at the hardware
+  cursor and read its position whether or not it is visible; Bubble Tea v1
+  otherwise parks it in the bottom-left corner, so the popup appears there.
+- `CursorWriter` (`internal/tui/cursor.go`) appends the cursor move to each
+  frame. It only touches writes that end in Bubble Tea's frame park sequence
+  (`ESC [ <rows> ; H`), never the alt-screen enter/exit or cursor show/hide
+  sequences -- otherwise the cursor would be hidden and displaced in the user's
+  shell after exit. Keep that distinction when changing the renderer.
+- Bubble Tea reports a lone space as `KeySpace`, not `KeyRunes`. Any code that
+  inserts typed text must handle both, or spaces are silently dropped.
+
+## Testing the UI
 - The full-screen controller is driven through the `Session` interface
   (`internal/tui/app.go`); `internal/tui/fake_test.go` provides a scriptable
   fake so streaming, tool activity, failures, cancellation, the model picker,

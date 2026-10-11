@@ -99,13 +99,15 @@ func TestEditorDrawsModalCursor(t *testing.T) {
 	model := newTestModel(t)
 	model.editor.SetText("hi")
 
-	insert := strings.Join(model.renderEditor(80, 4), "\n")
+	insertLines, _, _ := model.renderEditor(80, 4)
+	insert := strings.Join(insertLines, "\n")
 	if !strings.Contains(insert, beamCursor) {
 		t.Fatalf("insert editor should draw a beam: %q", insert)
 	}
 
 	update(model, tea.KeyMsg{Type: tea.KeyEsc})
-	normal := strings.Join(model.renderEditor(80, 4), "\n")
+	normalLines, _, _ := model.renderEditor(80, 4)
+	normal := strings.Join(normalLines, "\n")
 	if strings.Contains(normal, beamCursor) {
 		t.Fatalf("normal editor should not draw a beam: %q", normal)
 	}

@@ -96,6 +96,11 @@ type Model struct {
 
 	gPending bool
 	gTime    time.Time
+
+	// cursorAnchor is the terminal cell the real cursor should rest on. The
+	// output writer created in Run reads it so the IME candidate window follows
+	// the editor caret.
+	cursorAnchor *CursorAnchor
 }
 
 // New builds the model and seeds the transcript banner.
@@ -108,6 +113,7 @@ func New(c Session) *Model {
 		followTail:      true,
 		linesDirty:      true,
 		completionIndex: -1,
+		cursorAnchor:    NewCursorAnchor(),
 	}
 	m.entries = append(m.entries,
 		newTextEntry("AI Chat · Ollama Cloud · Model: "+c.ModelName()),
@@ -336,17 +342,27 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.editor.Mode() == ModeNormal {
 		return m.handleNormalKey(msg)
 	}
-	if msg.Type == tea.KeyRunes {
+	switch msg.Type {
+	case tea.KeyRunes:
 		m.editor.InsertText(string(msg.Runes))
-		m.edited()
+	case tea.KeySpace:
+		// Bubble Tea reports a lone space as KeySpace rather than KeyRunes, so
+		// it has to be handled explicitly or typed spaces would vanish.
+		m.editor.InsertText(" ")
+	default:
+		return nil
 	}
+	m.edited()
 	return nil
 }
 
 func (m *Model) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 	if m.editor.Pending() == 'r' {
-		if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+		switch {
+		case msg.Type == tea.KeyRunes && len(msg.Runes) > 0:
 			m.editor.ReplaceChar(msg.Runes[0])
+		case msg.Type == tea.KeySpace:
+			m.editor.ReplaceChar(' ')
 		}
 		m.editor.ClearPending()
 		m.edited()
@@ -836,16 +852,24 @@ func (m *Model) View() string {
 			}
 		}
 	}
-	editor := m.renderEditor(width, editorHeight)
+	editor, cursorRow, cursorColumn := m.renderEditor(width, editorHeight)
 	parts := make([]string, 0, len(visible)+len(editor)+2)
 	parts = append(parts, visible...)
 	parts = append(parts, sgr("90", strings.Repeat("─", width)))
 	parts = append(parts, editor...)
 	parts = append(parts, m.renderFooter(width))
+	// Tell the output writer where the caret is. Terminals anchor the IME
+	// candidate window at the hardware cursor, and Bubble Tea would otherwise
+	// leave it in the bottom-left corner. The frame always fills the screen, so
+	// the line counted from the top is also the line the terminal shows.
+	cursorLine := len(visible) + 1 + cursorRow
+	m.cursorAnchor.Set(cursorLine+1, cursorColumn+1)
 	return strings.Join(parts, "\n")
 }
 
-func (m *Model) renderEditor(width, height int) []string {
+// renderEditor renders the editor block. It also reports the caret as a 0-based
+// row within that block and a 0-based display column within that row.
+func (m *Model) renderEditor(width, height int) (editor []string, cursorRow, cursorColumn int) {
 	prompt := m.promptLabel()
 	promptWidth := runeLen(prompt)
 	lines, cursorLine, cursorCol := m.editor.VisualLines(width, promptWidth)
@@ -855,28 +879,28 @@ func (m *Model) renderEditor(width, height int) []string {
 		start = max(0, start)
 		start = min(start, len(lines)-height)
 	}
-	out := make([]string, 0, height)
+	editor = make([]string, 0, height)
 	for i := 0; i < height; i++ {
 		index := start + i
 		if index >= len(lines) {
-			out = append(out, "")
+			editor = append(editor, "")
 			continue
 		}
 		line := lines[index]
 		if index == 0 {
 			line = prompt + line
 		}
-		out = append(out, line)
+		editor = append(editor, line)
 	}
-	row := cursorLine - start
-	column := cursorCol
-	if row == 0 {
-		column += promptWidth
+	cursorRow = cursorLine - start
+	cursorColumn = cursorCol
+	if cursorRow == 0 {
+		cursorColumn += promptWidth
 	}
-	if row >= 0 && row < len(out) {
-		out[row] = applyCursor(out[row], column, m.editor.Mode())
+	if cursorRow >= 0 && cursorRow < len(editor) {
+		editor[cursorRow] = applyCursor(editor[cursorRow], cursorColumn, m.editor.Mode())
 	}
-	return out
+	return editor, cursorRow, cursorColumn
 }
 
 func (m *Model) renderFooter(width int) string {
@@ -983,7 +1007,13 @@ func nextModels(channel <-chan modelsEvent) tea.Cmd {
 // Run starts the full-screen UI and prints the finished transcript to stdout.
 func Run(c Session) error {
 	model := New(c)
-	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
+	program := tea.NewProgram(model,
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+		// Keep the real cursor on the editor caret so the terminal puts the IME
+		// candidate window there instead of in the bottom-left corner.
+		tea.WithOutput(NewCursorWriter(os.Stdout, model.cursorAnchor)),
+	)
 	final, err := program.Run()
 	if finalModel, ok := final.(*Model); ok {
 		finalModel.PrintTranscript(os.Stdout)
