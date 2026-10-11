@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 BINARY := gochat
-VERSION ?= 0.2.0
+VERSION ?= 0.2.1
 GO ?= go
 
 .PHONY: help build test lint fmt run image clean
