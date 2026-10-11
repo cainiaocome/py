@@ -18,7 +18,7 @@ import (
 // Version is overridable at build time:
 //
 //	go build -ldflags "-X main.Version=1.2.3"
-var Version = "0.1.5"
+var Version = "0.1.6"
 
 func main() {
 	if handled := handleArguments(os.Args[1:], os.Stdout); handled {

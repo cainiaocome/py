@@ -43,6 +43,33 @@ as its own project: do not merge it into `main`, and keep the Python project on
   If a request ever asks for Ctrl+D to exit (or to stop scrolling at the end),
   remind me of this decision before changing it.
 
+## Design notes (Go, not a Python translation)
+
+This tree started as a port and inherited Python's shape in a few places. Those
+shapes are what caused most of the bugs found after the port; prefer the
+following when touching the code.
+
+- **Derive state, do not store it.** `Model.responding()` reads the stream
+  channel instead of a flag, so "is a response streaming?" can never disagree
+  with reality. The same rule removed the `/clear` bug (the transcript and the
+  conversation were two pieces of state that had to be updated together).
+- **Keep independent concerns in independent fields.** One `appState` enum once
+  meant "streaming", "a modal owns the input" and "show completions" at the
+  same time; that is why the command palette disappeared during a response.
+  Streaming is derived, modals live in `overlay`, completions are just the
+  completion slice.
+- **A user can always type.** Typing, completing and keeping a draft must work
+  while a response streams. Only a modal overlay (the model picker) takes input
+  away.
+- **Channels, not callbacks-into-the-UI.** The agent loop runs in a goroutine
+  and publishes `streamEvent`s on a channel; the model consumes them in
+  `Update`. Never touch the model or the terminal from a producer goroutine.
+- **Interfaces at the seams we test.** `Session` is the whole contract the UI
+  needs, which is why streaming, tools, failures and cancellation are all
+  testable without a terminal or a network.
+- **Table-driven tests, one behaviour each.** Prefer a table of cases over
+  re-testing a whole flow for each variation.
+
 ## Cursor and IME
 
 - The real (hardware) cursor must rest on the editor caret on every rendered

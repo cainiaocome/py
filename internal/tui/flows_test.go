@@ -100,8 +100,8 @@ func TestBusyEnterKeepsTheDraft(t *testing.T) {
 
 	update(model, runeKey("hello"))
 	cmd := update(model, tea.KeyMsg{Type: tea.KeyEnter})
-	if model.state != stateResponding {
-		t.Fatalf("state = %v, want responding", model.state)
+	if !model.responding() {
+		t.Fatal("expected a streaming response")
 	}
 
 	update(model, runeKey("draft"))
@@ -115,8 +115,8 @@ func TestBusyEnterKeepsTheDraft(t *testing.T) {
 
 	close(release)
 	pump(t, model, cmd)
-	if model.state != stateReady {
-		t.Fatalf("state = %v, want ready", model.state)
+	if model.overlay != overlayNone {
+		t.Fatalf("overlay = %v, want none", model.overlay)
 	}
 	if !strings.Contains(strings.Join(entryTexts(model), "\n"), "hello partial answer") {
 		t.Fatalf("the answer should be retained: %v", entryTexts(model))
@@ -166,8 +166,8 @@ func TestCancelledResponseKeepsPartialTextAndRecovers(t *testing.T) {
 	update(model, tea.KeyMsg{Type: tea.KeyCtrlC})
 	pump(t, model, cmd)
 
-	if model.state != stateReady {
-		t.Fatalf("state = %v, want ready", model.state)
+	if model.overlay != overlayNone {
+		t.Fatalf("overlay = %v, want none", model.overlay)
 	}
 	texts := strings.Join(entryTexts(model), "\n")
 	if !strings.Contains(texts, "partial") {
@@ -231,15 +231,15 @@ func TestModelPickerListsSelectsAndCancels(t *testing.T) {
 
 	update(model, runeKey("/model"))
 	cmd := update(model, tea.KeyMsg{Type: tea.KeyEnter})
-	if model.state != stateModelLoading {
-		t.Fatalf("state = %v, want loading", model.state)
+	if model.overlay != overlayModelsLoading {
+		t.Fatalf("overlay = %v, want loading", model.overlay)
 	}
 	cmd = update(model, cmd())
 	if cmd != nil {
 		t.Fatal("listing models should be a single command")
 	}
-	if model.state != stateModelSelect {
-		t.Fatalf("state = %v, want select", model.state)
+	if model.overlay != overlayModelPicker {
+		t.Fatalf("overlay = %v, want picker", model.overlay)
 	}
 	texts := strings.Join(entryTexts(model), "\n")
 	if !strings.Contains(texts, "1. model-a (current)") || !strings.Contains(texts, "2. model-b") {
@@ -257,8 +257,8 @@ func TestModelPickerListsSelectsAndCancels(t *testing.T) {
 	cmd = update(model, tea.KeyMsg{Type: tea.KeyEnter})
 	update(model, cmd())
 	update(model, tea.KeyMsg{Type: tea.KeyEnter})
-	if model.state != stateReady {
-		t.Fatalf("cancel state = %v", model.state)
+	if model.overlay != overlayNone {
+		t.Fatalf("cancel left overlay = %v", model.overlay)
 	}
 	if fake.ModelName() != "model-b" {
 		t.Fatalf("cancel changed the model: %q", fake.ModelName())
@@ -274,8 +274,8 @@ func TestModelPickerCtrlCCancelsWithoutExiting(t *testing.T) {
 	if isQuit(update(model, tea.KeyMsg{Type: tea.KeyCtrlC})) {
 		t.Fatal("Ctrl+C should cancel the picker, not exit")
 	}
-	if model.state != stateReady {
-		t.Fatalf("state = %v, want ready", model.state)
+	if model.overlay != overlayNone {
+		t.Fatalf("overlay = %v, want none", model.overlay)
 	}
 	if !strings.Contains(strings.Join(entryTexts(model), "\n"), "Model selection cancelled.") {
 		t.Fatalf("missing cancel notice: %v", entryTexts(model))
@@ -290,8 +290,8 @@ func TestModelListFailureRecovers(t *testing.T) {
 	update(model, runeKey("/model"))
 	cmd := update(model, tea.KeyMsg{Type: tea.KeyEnter})
 	update(model, cmd())
-	if model.state != stateReady {
-		t.Fatalf("state = %v, want ready", model.state)
+	if model.overlay != overlayNone {
+		t.Fatalf("overlay = %v, want none", model.overlay)
 	}
 	if !strings.Contains(strings.Join(entryTexts(model), "\n"), "Could not select a model.") {
 		t.Fatalf("missing failure notice: %v", entryTexts(model))

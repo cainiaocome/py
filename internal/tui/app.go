@@ -18,13 +18,18 @@ import (
 // chunk always paints and the finished text is always painted once.
 const liveRefreshInterval = 50 * time.Millisecond
 
-type appState int
+// overlay is the modal thing that currently owns the input, if anything.
+//
+// Whether a response is streaming is deliberately *not* part of this: the user
+// keeps typing, keeps seeing command completions, and keeps a draft while the
+// model answers, so streaming and overlays are independent. Combining them into
+// one enum is what made the command palette disappear during a response.
+type overlay int
 
 const (
-	stateReady appState = iota
-	stateResponding
-	stateModelLoading
-	stateModelSelect
+	overlayNone overlay = iota
+	overlayModelsLoading
+	overlayModelPicker
 )
 
 type streamKind int
@@ -73,10 +78,10 @@ type Model struct {
 	lastEcho    *Entry
 	liveEntry   *Entry
 
-	width  int
-	height int
-	state  appState
-	status string
+	width   int
+	height  int
+	overlay overlay
+	status  string
 
 	followTail   bool
 	scrollOffset int
@@ -89,10 +94,9 @@ type Model struct {
 	completionIndex int
 	lastModels      []string
 
-	stream      chan streamEvent
-	cancel      context.CancelFunc
-	pendingText string
-	lastPaint   time.Time
+	stream    chan streamEvent
+	cancel    context.CancelFunc
+	lastPaint time.Time
 
 	gPending bool
 	gTime    time.Time
@@ -108,7 +112,7 @@ func New(c Session) *Model {
 	m := &Model{
 		chat:            c,
 		editor:          NewEditor(),
-		state:           stateReady,
+		overlay:         overlayNone,
 		status:          "Ready",
 		followTail:      true,
 		linesDirty:      true,
@@ -172,7 +176,6 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 		return nextStream(m.stream)
 	case eventDelta:
 		if m.liveEntry != nil {
-			m.pendingText = event.text
 			now := time.Now()
 			if m.lastPaint.IsZero() || now.Sub(m.lastPaint) >= liveRefreshInterval {
 				m.liveEntry.setText(event.text)
@@ -191,10 +194,8 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 			m.liveEntry = nil
 			m.linesDirty = true
 		}
-		m.pendingText = ""
 		m.stream = nil
 		m.cancel = nil
-		m.state = stateReady
 		m.status = "Ready"
 		if event.err != nil {
 			if errors.Is(event.err, context.Canceled) {
@@ -208,12 +209,12 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 }
 
 func (m *Model) handleModels(event modelsEvent) tea.Cmd {
-	if m.state != stateModelLoading {
+	if m.overlay != overlayModelsLoading {
 		return nil
 	}
 	if event.err != nil {
 		m.appendStyled("Could not select a model. Try /model <name> or check your connection and key.", styleRed)
-		m.state = stateReady
+		m.overlay = overlayNone
 		m.status = "Ready"
 		return nil
 	}
@@ -227,7 +228,7 @@ func (m *Model) handleModels(event modelsEvent) tea.Cmd {
 	if len(event.models) == 0 {
 		m.appendStyled("No models returned. Enter a model name manually.", styleDim)
 	}
-	m.state = stateModelSelect
+	m.overlay = overlayModelPicker
 	m.status = "Ready"
 	m.lastModels = event.models
 	return nil
@@ -439,8 +440,11 @@ func (m *Model) handleNormalKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 func (m *Model) submit() tea.Cmd {
-	if m.state == stateResponding || m.state == stateModelLoading {
+	if m.responding() {
 		m.status = "Responding · draft kept; Ctrl+C interrupts"
+		return nil
+	}
+	if m.overlay == overlayModelsLoading {
 		return nil
 	}
 	raw := m.editor.Text()
@@ -457,8 +461,8 @@ func (m *Model) submit() tea.Cmd {
 	m.scrollOffset = 0
 	m.status = "Submitted"
 
-	if m.state == stateModelSelect {
-		m.state = stateReady
+	if m.overlay == overlayModelPicker {
+		m.overlay = overlayNone
 		if value == "" {
 			return nil
 		}
@@ -504,7 +508,7 @@ func (m *Model) selectModel(argument string) tea.Cmd {
 	}
 	m.appendText("Current model: " + m.chat.ModelName())
 	channel := make(chan modelsEvent, 1)
-	m.state = stateModelLoading
+	m.overlay = overlayModelsLoading
 	go func() {
 		models, err := m.chat.ListModels(context.Background())
 		channel <- modelsEvent{models: models, err: err}
@@ -548,7 +552,6 @@ func (m *Model) startResponse(prompt string) tea.Cmd {
 	m.liveEntry.live = true
 	m.entries = append(m.entries, m.liveEntry)
 	m.linesDirty = true
-	m.state = stateResponding
 	m.status = "Responding · Ctrl+C to interrupt"
 	m.lastPaint = time.Time{}
 
@@ -568,21 +571,20 @@ func (m *Model) startResponse(prompt string) tea.Cmd {
 }
 
 func (m *Model) onInterrupt() tea.Cmd {
-	switch m.state {
-	case stateResponding:
+	if m.responding() {
 		if m.cancel != nil {
 			m.cancel()
 		}
 		m.status = "Interrupting response…"
 		return nil
-	case stateModelLoading, stateModelSelect:
-		m.state = stateReady
+	}
+	if m.overlay != overlayNone {
+		m.overlay = overlayNone
 		m.appendStyled("Model selection cancelled.", styleDim)
 		m.status = "Ready"
 		return nil
-	default:
-		return tea.Quit
 	}
+	return tea.Quit
 }
 
 func (m *Model) clearTranscript() {
@@ -757,10 +759,14 @@ func (m *Model) effectiveWidth() int {
 
 func (m *Model) promptLabel() string { return "You [" + m.chat.ModelName() + "] > " }
 
+// responding reports whether a response is streaming. It is derived from the
+// stream channel instead of being stored, so the two can never disagree.
+func (m *Model) responding() bool { return m.stream != nil }
+
 func (m *Model) refreshCompletions() {
 	m.completions = nil
 	m.completionIndex = -1
-	if m.state != stateReady {
+	if m.overlay != overlayNone {
 		return
 	}
 	text := m.editor.Text()
@@ -922,7 +928,7 @@ func (m *Model) renderFooter(width int) string {
 }
 
 func (m *Model) menuLines(width int) []string {
-	if m.state != stateReady || len(m.completions) == 0 {
+	if m.overlay != overlayNone || len(m.completions) == 0 {
 		return nil
 	}
 	const maxMenu = 5
@@ -997,6 +1003,11 @@ func isDecimal(s string) bool {
 }
 
 func nextStream(channel <-chan streamEvent) tea.Cmd {
+	// Receiving from a nil channel blocks forever, so a stopped stream must not
+	// schedule another read.
+	if channel == nil {
+		return nil
+	}
 	return func() tea.Msg {
 		event, ok := <-channel
 		if !ok {
@@ -1007,6 +1018,9 @@ func nextStream(channel <-chan streamEvent) tea.Cmd {
 }
 
 func nextModels(channel <-chan modelsEvent) tea.Cmd {
+	if channel == nil {
+		return nil
+	}
 	return func() tea.Msg {
 		event, ok := <-channel
 		if !ok {
