@@ -428,6 +428,7 @@ func (m *Model) submit() tea.Cmd {
 	m.gPending = false
 	m.followTail = true
 	m.scrollOffset = 0
+	m.status = "Submitted"
 
 	if m.state == stateModelSelect {
 		m.state = stateReady
