@@ -902,6 +902,14 @@ func applyCursor(line string, column int, mode Mode) string {
 	if column < 0 {
 		column = 0
 	}
+	// Modal cursor shapes mirror prompt_toolkit's ModalCursorShapeConfig:
+	// insert is a beam, normal is a block, replace is an underline.
+	if mode == ModeInsert {
+		if column >= len(runes) {
+			return line + beamCursor
+		}
+		return string(runes[:column]) + beamCursor + string(runes[column+1:])
+	}
 	style := ansiReverse
 	if mode == ModeReplace {
 		style = ansiUnder

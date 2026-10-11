@@ -172,5 +172,9 @@ normal mode.
   Python UI.
 - Markdown is rendered by Glamour rather than Rich; styling is close but not
   byte-identical.
+- The cursor is painted rather than positioned: Bubble Tea cannot move the real
+  terminal cursor, so insert mode shows a thin beam (`▏`), normal mode a
+  reverse-video block, and replace mode an underline, matching prompt_toolkit's
+  `ModalCursorShapeConfig`.
 - The line-oriented fallback prints plain text (no live Markdown repaint), which
   keeps piped output clean.

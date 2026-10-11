@@ -77,6 +77,43 @@ func TestTypingAndModes(t *testing.T) {
 	}
 }
 
+func TestCursorShapesMatchEditorMode(t *testing.T) {
+	// Insert is a beam: a thin bar at the insertion point, never a block.
+	if got := applyCursor("abc", 1, ModeInsert); got != "a"+beamCursor+"c" {
+		t.Fatalf("insert cursor = %q", got)
+	}
+	if got := applyCursor("abc", 3, ModeInsert); got != "abc"+beamCursor {
+		t.Fatalf("insert cursor at end = %q", got)
+	}
+	// Normal is a reverse-video block over the character under the cursor.
+	if got := applyCursor("abc", 1, ModeNormal); !strings.Contains(got, "\x1b[7mb") {
+		t.Fatalf("normal cursor = %q", got)
+	}
+	// Replace is an underline.
+	if got := applyCursor("abc", 1, ModeReplace); !strings.Contains(got, "\x1b[4mb") {
+		t.Fatalf("replace cursor = %q", got)
+	}
+}
+
+func TestEditorDrawsModalCursor(t *testing.T) {
+	model := newTestModel(t)
+	model.editor.SetText("hi")
+
+	insert := strings.Join(model.renderEditor(80, 4), "\n")
+	if !strings.Contains(insert, beamCursor) {
+		t.Fatalf("insert editor should draw a beam: %q", insert)
+	}
+
+	update(model, tea.KeyMsg{Type: tea.KeyEsc})
+	normal := strings.Join(model.renderEditor(80, 4), "\n")
+	if strings.Contains(normal, beamCursor) {
+		t.Fatalf("normal editor should not draw a beam: %q", normal)
+	}
+	if !strings.Contains(normal, "\x1b[7m") {
+		t.Fatalf("normal editor should draw a block: %q", normal)
+	}
+}
+
 func TestCommandCompletionCycles(t *testing.T) {
 	model := newTestModel(t)
 	model.editor.SetText("/")

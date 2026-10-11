@@ -18,6 +18,12 @@ const (
 	styleMenuSel = "7;1;48;5;24;38;5;255"
 )
 
+// beamCursor is the drawn stand-in for a terminal "beam" cursor. Bubble Tea's
+// renderer cannot position the real cursor, so the cursor has to be painted.
+// A beam is a thin bar hugging the left edge of the cursor cell, unlike the
+// reverse-video block used in normal mode.
+const beamCursor = "\u258f"
+
 func sgr(params, text string) string {
 	if params == "" {
 		return text
