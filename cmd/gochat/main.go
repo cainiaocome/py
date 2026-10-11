@@ -21,7 +21,7 @@ import (
 // Version is overridable at build time:
 //
 //	go build -ldflags "-X main.Version=1.2.3"
-var Version = "0.1.14"
+var Version = "0.1.15"
 
 // checkTimeout bounds --check so an unreachable endpoint reports instead of
 // hanging.

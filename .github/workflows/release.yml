@@ -92,8 +92,19 @@ jobs:
           cd artifacts
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
+      - name: Resolve the release title
+        id: title
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          # The tag carries the go-v namespace; the release is named after the
+          # binary and a plain version, so it reads like the Python releases.
+          case "$REF" in
+            go-v*) echo "title=gochat v${REF#go-v}" >> "$GITHUB_OUTPUT" ;;
+            *) echo "title=gochat ${REF:-unknown}" >> "$GITHUB_OUTPUT" ;;
+          esac
       - uses: softprops/action-gh-release@v2
         with:
-          name: gochat ${{ github.ref_name }}
+          name: ${{ steps.title.outputs.title }}
           files: artifacts/*
           generate_release_notes: true
