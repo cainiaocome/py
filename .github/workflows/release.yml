@@ -67,5 +67,7 @@ jobs:
           cat SHA256SUMS
       - uses: softprops/action-gh-release@v2
         with:
+          # The tag is the project version (`v0.1.2`); the release is the tool.
+          name: pychat ${{ github.ref_name }}
           files: artifacts/*
           generate_release_notes: true
