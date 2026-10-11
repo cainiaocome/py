@@ -41,12 +41,32 @@ type Chat struct {
 	webEnabled bool
 }
 
+// Endpoints overrides the Ollama Cloud URLs. Empty fields keep the defaults.
+type Endpoints struct {
+	ChatBase string // OpenAI-compatible base, e.g. https://ollama.com/v1
+	WebBase  string // Ollama web API host, e.g. https://ollama.com
+}
+
 // New builds a chat backed by Ollama Cloud.
 func New(apiKey, model string) *Chat {
+	return NewWithEndpoints(apiKey, model, Endpoints{})
+}
+
+// NewWithEndpoints builds a chat against alternate endpoints. It exists so
+// tests and self-hosted proxies can point the client at a local server.
+func NewWithEndpoints(apiKey, model string, endpoints Endpoints) *Chat {
+	chatBase := endpoints.ChatBase
+	if chatBase == "" {
+		chatBase = BaseURL
+	}
+	tools := web.New(apiKey)
+	if endpoints.WebBase != "" {
+		tools = web.NewWithBaseURL(apiKey, endpoints.WebBase)
+	}
 	return &Chat{
 		model:  model,
-		client: llm.New(BaseURL, apiKey),
-		web:    web.New(apiKey),
+		client: llm.New(chatBase, apiKey),
+		web:    tools,
 	}
 }
 

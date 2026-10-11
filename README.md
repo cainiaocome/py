@@ -45,6 +45,20 @@ OLLAMA_API_KEY=... OLLAMA_MODEL=... ./gochat
 `gochat --version` prints the version; `gochat --help` prints usage. Unknown
 arguments are ignored.
 
+### Tests
+
+```sh
+make test           # go test ./...
+make lint           # go vet ./...
+go test -race ./...
+```
+
+The suite runs entirely offline. HTTP is exercised with `httptest` servers, and
+the full-screen controller is driven through the `Session` interface by a fake
+conversation that scripts streaming deltas, tool activity, failures, and
+cancellation. `go test -cover ./...` reports roughly 85-95% per package (`main`
+is the exception, since it needs a real terminal).
+
 ### Docker
 
 ```sh

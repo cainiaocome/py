@@ -11,7 +11,6 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/cainiaocome/py/internal/chat"
 	"github.com/cainiaocome/py/internal/textutil"
 )
 
@@ -52,9 +51,21 @@ type anchor struct {
 	offset int
 }
 
+// Session is the conversation the UI drives. *chat.Chat implements it; tests
+// substitute a fake so the model can be exercised without a network.
+type Session interface {
+	ModelName() string
+	WebEnabled() bool
+	ListModels(ctx context.Context) ([]string, error)
+	SwitchModel(model string) error
+	EnableWeb() bool
+	Clear()
+	Stream(ctx context.Context, prompt string, onActivity, onText func(string)) (string, error)
+}
+
 // Model is the full-screen Bubble Tea application.
 type Model struct {
-	chat   *chat.Chat
+	chat   Session
 	editor *Editor
 
 	entries     []*Entry
@@ -88,7 +99,7 @@ type Model struct {
 }
 
 // New builds the model and seeds the transcript banner.
-func New(c *chat.Chat) *Model {
+func New(c Session) *Model {
 	m := &Model{
 		chat:            c,
 		editor:          NewEditor(),
@@ -559,6 +570,7 @@ func (m *Model) onInterrupt() tea.Cmd {
 }
 
 func (m *Model) clearTranscript() {
+	m.chat.Clear()
 	m.entries = nil
 	m.liveEntry = nil
 	m.userEntries = nil
@@ -969,7 +981,7 @@ func nextModels(channel <-chan modelsEvent) tea.Cmd {
 }
 
 // Run starts the full-screen UI and prints the finished transcript to stdout.
-func Run(c *chat.Chat) error {
+func Run(c Session) error {
 	model := New(c)
 	program := tea.NewProgram(model, tea.WithAltScreen(), tea.WithMouseCellMotion())
 	final, err := program.Run()

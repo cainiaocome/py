@@ -15,8 +15,10 @@ import (
 )
 
 const (
-	searchURL          = "https://ollama.com/api/web_search"
-	fetchURL           = "https://ollama.com/api/web_fetch"
+	// BaseURL is Ollama Cloud's web API host.
+	BaseURL            = "https://ollama.com"
+	searchPath         = "/api/web_search"
+	fetchPath          = "/api/web_fetch"
 	requestTimeout     = 30 * time.Second
 	maxResultsLimit    = 10
 	maxResultContent   = 20_000
@@ -54,11 +56,18 @@ type WebTools struct {
 
 // New builds a client with the production endpoints and a 30 second timeout.
 func New(apiKey string) *WebTools {
+	return NewWithBaseURL(apiKey, BaseURL)
+}
+
+// NewWithBaseURL builds a client against an alternate Ollama host. It exists so
+// tests and self-hosted proxies can point the tools at a local server.
+func NewWithBaseURL(apiKey, base string) *WebTools {
+	base = strings.TrimRight(base, "/")
 	return &WebTools{
 		apiKey:    apiKey,
 		client:    &http.Client{Timeout: requestTimeout},
-		searchURL: searchURL,
-		fetchURL:  fetchURL,
+		searchURL: base + searchPath,
+		fetchURL:  base + fetchPath,
 	}
 }
 

@@ -13,7 +13,6 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/cainiaocome/py/internal/chat"
 	"github.com/cainiaocome/py/internal/tui"
 )
 
@@ -23,7 +22,7 @@ type streamResult struct {
 }
 
 // Run reads prompts from in and writes replies to out until EOF or /exit.
-func Run(c *chat.Chat, in io.Reader, out io.Writer) error {
+func Run(c tui.Session, in io.Reader, out io.Writer) error {
 	fmt.Fprintln(out, "AI Chat · Ollama Cloud · Model: "+c.ModelName())
 	fmt.Fprintln(out, "Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · /start · /clear · /exit · /model")
 	fmt.Fprintln(out, "Web tools: disabled · "+tui.EnableWebCommand)
@@ -78,7 +77,7 @@ func Run(c *chat.Chat, in io.Reader, out io.Writer) error {
 	return nil
 }
 
-func runResponse(c *chat.Chat, out io.Writer, signals <-chan os.Signal, prompt string) {
+func runResponse(c tui.Session, out io.Writer, signals <-chan os.Signal, prompt string) {
 	fmt.Fprintln(out, "Assistant ["+c.ModelName()+"]")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -115,7 +114,7 @@ func runResponse(c *chat.Chat, out io.Writer, signals <-chan os.Signal, prompt s
 	}
 }
 
-func selectModel(c *chat.Chat, reader *bufio.Reader, out io.Writer, argument string) error {
+func selectModel(c tui.Session, reader *bufio.Reader, out io.Writer, argument string) error {
 	if argument == "" {
 		fmt.Fprintln(out, "Current model: "+c.ModelName())
 		models, err := c.ListModels(context.Background())

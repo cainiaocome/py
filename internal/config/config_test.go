@@ -139,3 +139,63 @@ func asConfigurationError(err error, target **ConfigurationError) bool {
 	}
 	return ok
 }
+
+func TestLoadConfiguredEnvironmentSkipsFiles(t *testing.T) {
+	cwd := t.TempDir()
+	writeFile(t, filepath.Join(cwd, ".env"), "OLLAMA_API_KEY=file\nOLLAMA_MODEL=file\n")
+
+	env := map[string]string{
+		"OLLAMA_API_KEY":   "env",
+		"OLLAMA_MODEL":     "env",
+		"AI_CHAT_ENV_FILE": "missing.env",
+	}
+	if err := Load(env, cwd, cwd); err != nil {
+		t.Fatalf("a complete environment should not read or require files: %v", err)
+	}
+	if env["OLLAMA_API_KEY"] != "env" || env["OLLAMA_MODEL"] != "env" {
+		t.Fatalf("environment was modified: %v", env)
+	}
+}
+
+func TestLoadBlankEnvironmentValueIsFilledFromCurrentDirectory(t *testing.T) {
+	cwd := t.TempDir()
+	writeFile(t, filepath.Join(cwd, ".env"), "OLLAMA_API_KEY=cwd-key\nOLLAMA_MODEL=cwd-model\n")
+
+	env := map[string]string{"OLLAMA_MODEL": "   "}
+	if err := Load(env, cwd, cwd); err != nil {
+		t.Fatal(err)
+	}
+	if env["OLLAMA_API_KEY"] != "cwd-key" || env["OLLAMA_MODEL"] != "cwd-model" {
+		t.Fatalf("blank environment value should be filled: %v", env)
+	}
+}
+
+func TestLoadUsesHomeFromTheEnvironment(t *testing.T) {
+	cwd := t.TempDir()
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".env"), "OLLAMA_API_KEY=home-key\nOLLAMA_MODEL=home-model\n")
+
+	env := map[string]string{"HOME": home}
+	if err := Load(env, cwd, ""); err != nil {
+		t.Fatal(err)
+	}
+	if env["OLLAMA_API_KEY"] != "home-key" || env["OLLAMA_MODEL"] != "home-model" {
+		t.Fatalf("HOME from the environment was not used: %v", env)
+	}
+}
+
+func TestLoadKeepsNonBlankValuesWhileFillingBlanks(t *testing.T) {
+	cwd := t.TempDir()
+	writeFile(t, filepath.Join(cwd, ".env"), "OLLAMA_API_KEY=file-key\nOLLAMA_MODEL=file-model\n")
+
+	env := map[string]string{"OLLAMA_API_KEY": "keep", "OLLAMA_MODEL": ""}
+	if err := Load(env, cwd, cwd); err != nil {
+		t.Fatal(err)
+	}
+	if env["OLLAMA_API_KEY"] != "keep" {
+		t.Fatalf("non-blank value was overwritten: %v", env)
+	}
+	if env["OLLAMA_MODEL"] != "file-model" {
+		t.Fatalf("blank value was not filled: %v", env)
+	}
+}

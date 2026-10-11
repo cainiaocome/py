@@ -23,7 +23,10 @@ as its own project: do not merge it into `main`, and keep the Python project on
 
 ## Testing the UI
 
-- The model layer is unit-tested with Bubble Tea messages directly
-  (`internal/tui/app_test.go`); no terminal or network is required.
-- `internal/config`, `internal/web`, and `internal/llm` tests use `httptest`
-  servers and never call the real Ollama Cloud.
+- The full-screen controller is driven through the `Session` interface
+  (`internal/tui/app.go`); `internal/tui/fake_test.go` provides a scriptable
+  fake so streaming, tool activity, failures, cancellation, the model picker,
+  and scrolling are all covered without a terminal or a network.
+- The model, config, LLM, and web layers are tested with `httptest` servers and
+  never call Ollama Cloud.
+- Run `go test -race ./...` as well; the streaming path uses goroutines.
