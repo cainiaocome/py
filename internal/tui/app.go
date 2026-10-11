@@ -89,10 +89,15 @@ type Model struct {
 
 	followTail   bool
 	scrollOffset int
-	lineCount    int
-	linesCache   []string
-	linesWidth   int
-	linesDirty   bool
+
+	// transcript is a memoised render of entries. It is keyed by the revision
+	// below and the width it was rendered at, so nothing can go stale by
+	// forgetting to set a flag: every mutation bumps the revision through
+	// touch().
+	revision         uint64
+	renderedRevision uint64
+	renderedWidth    int
+	renderedLines    []string
 
 	completions     []string
 	completionIndex int
@@ -124,15 +129,12 @@ func New(c Session) *Model {
 		overlay:         overlayNone,
 		status:          "Ready",
 		followTail:      true,
-		linesDirty:      true,
 		completionIndex: -1,
 		cursorAnchor:    NewCursorAnchor(),
 	}
-	m.entries = append(m.entries,
-		newTextEntry("AI Chat · Ollama Cloud · Model: "+c.ModelName()),
-		newTextEntry("Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · "+command.Hint()),
-		newTextEntry("Web tools: disabled · "+command.EnableWeb),
-	)
+	m.appendText("AI Chat · Ollama Cloud · Model: " + c.ModelName())
+	m.appendText("Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · " + command.Hint())
+	m.appendText("Web tools: disabled · " + command.EnableWeb)
 	return m
 }
 
@@ -149,7 +151,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = message.Width
 		m.height = message.Height
-		m.linesDirty = true
+		m.touch()
 		return m, nil
 	case tea.MouseMsg:
 		return m, m.handleMouse(message)
@@ -185,7 +187,7 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 		} else {
 			m.entries = insertAt(m.entries, index, entry)
 		}
-		m.linesDirty = true
+		m.touch()
 		return nextStream(m.stream)
 	case eventDelta:
 		if m.liveEntry != nil {
@@ -193,7 +195,7 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 			now := time.Now()
 			if m.lastPaint.IsZero() || now.Sub(m.lastPaint) >= liveRefreshInterval {
 				m.liveEntry.setText(strings.Join(m.liveChunks, ""))
-				m.linesDirty = true
+				m.touch()
 				m.lastPaint = now
 			}
 		}
@@ -206,7 +208,7 @@ func (m *Model) handleStream(event streamEvent) tea.Cmd {
 				m.entries = append(m.entries[:index], m.entries[index+1:]...)
 			}
 			m.liveEntry = nil
-			m.linesDirty = true
+			m.touch()
 		}
 		// The returned text is authoritative, so anything still buffered here is
 		// already accounted for.
@@ -264,7 +266,7 @@ func (m *Model) submit() tea.Cmd {
 
 	echo := newTextEntry(m.promptLabel() + textutil.SafeLiteral(raw))
 	m.entries = append(m.entries, echo)
-	m.linesDirty = true
+	m.touch()
 	m.lastEcho = echo
 	m.editor.Clear()
 	m.refreshCompletions()
@@ -363,7 +365,7 @@ func (m *Model) startResponse(prompt string) tea.Cmd {
 	m.liveEntry.live = true
 	m.liveChunks = nil
 	m.entries = append(m.entries, m.liveEntry)
-	m.linesDirty = true
+	m.touch()
 	m.status = "Responding · Ctrl+C to interrupt"
 	m.lastPaint = time.Time{}
 
@@ -408,7 +410,7 @@ func (m *Model) clearTranscript() {
 	m.gPending = false
 	m.followTail = true
 	m.scrollOffset = 0
-	m.linesDirty = true
+	m.touch()
 }
 
 func (m *Model) markLastMessage() {
@@ -535,8 +537,7 @@ func (m *Model) currentTopOffset() int {
 }
 
 func (m *Model) maxScrollOffset(height int) int {
-	m.transcriptLines(m.effectiveWidth())
-	return max(0, m.lineCount-height)
+	return max(0, len(m.transcriptLines(m.effectiveWidth()))-height)
 }
 
 func (m *Model) pageLines() int { return max(1, m.viewportHeight()-2) }
@@ -611,27 +612,34 @@ func (m *Model) edited() { m.refreshCompletions() }
 
 func (m *Model) appendText(text string) {
 	m.entries = append(m.entries, newTextEntry(text))
-	m.linesDirty = true
+	m.touch()
 }
 
 func (m *Model) appendStyled(text, style string) {
 	m.entries = append(m.entries, newStyledEntry(text, style))
-	m.linesDirty = true
+	m.touch()
 }
 
+// touch marks the transcript as needing a rebuild. Every mutation of the
+// entries goes through it, which is what makes the cache below impossible to
+// forget: there is no flag to set.
+func (m *Model) touch() { m.revision++ }
+
+// transcriptLines renders every entry at width, memoised until the model
+// changes or the width does. View calls it, so it must not mutate anything
+// except the cache itself.
 func (m *Model) transcriptLines(width int) []string {
-	if !m.linesDirty && m.linesWidth == width && m.linesCache != nil {
-		return m.linesCache
+	if m.renderedLines != nil && m.renderedRevision == m.revision && m.renderedWidth == width {
+		return m.renderedLines
 	}
 	var lines []string
 	for _, entry := range m.entries {
 		lines = append(lines, entry.lines(width)...)
 	}
 	lines = append(lines, "")
-	m.linesCache = lines
-	m.linesWidth = width
-	m.linesDirty = false
-	m.lineCount = len(lines)
+	m.renderedLines = lines
+	m.renderedWidth = width
+	m.renderedRevision = m.revision
 	return lines
 }
 

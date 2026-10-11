@@ -367,7 +367,7 @@ func TestPastedControlCharactersAreEscapedInTheTranscript(t *testing.T) {
 	}
 }
 
-func TestTranscriptLinesAreCachedUntilTheyAreDirtied(t *testing.T) {
+func TestTranscriptLinesAreCachedUntilTheyChange(t *testing.T) {
 	model := newFakeModel(t, newFakeChat("m"))
 	fillTranscript(model, 3)
 
@@ -376,10 +376,40 @@ func TestTranscriptLinesAreCachedUntilTheyAreDirtied(t *testing.T) {
 	if fmt.Sprintf("%p", first) != fmt.Sprintf("%p", second) {
 		t.Fatal("unchanged transcript lines should be served from the cache")
 	}
+	if third := model.transcriptLines(40); fmt.Sprintf("%p", third) == fmt.Sprintf("%p", first) {
+		t.Fatal("a width change should invalidate the cache")
+	}
+
 	model.appendText("more")
 	third := model.transcriptLines(80)
 	if len(third) <= len(first) {
 		t.Fatalf("appending an entry should rebuild the cache: %d -> %d", len(first), len(third))
+	}
+
+	// View must not be the thing that invalidates the cache, or a second call
+	// would rebuild the whole transcript for no reason.
+	model.View()
+	if fourth := model.transcriptLines(80); fmt.Sprintf("%p", fourth) != fmt.Sprintf("%p", third) {
+		t.Fatal("View should leave the transcript cache alone")
+	}
+}
+
+func TestViewIsIdempotent(t *testing.T) {
+	model := newFakeModel(t, newFakeChat("m"))
+	model.width, model.height = 60, 20
+	fillTranscript(model, 20)
+	model.editor.SetText("/")
+	model.refreshCompletions()
+
+	first := model.View()
+	for i := 0; i < 3; i++ {
+		if again := model.View(); again != first {
+			t.Fatalf("View is not idempotent:\n%q\n%q", first, again)
+		}
+	}
+	row, column, ok := model.cursorAnchor.position()
+	if !ok || row <= 0 || column <= 0 {
+		t.Fatalf("anchor = (%d,%d,%v)", row, column, ok)
 	}
 }
 
