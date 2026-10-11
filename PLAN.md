@@ -376,3 +376,20 @@ the new name by https://github.com/cainiaocome/py/actions/runs/38133685125
 (image https://github.com/cainiaocome/py/actions/runs/38133685123). Go:
 `go-v0.1.0` through `go-v0.1.14` retitled, and `go-v0.1.15` published by
 https://github.com/cainiaocome/py/actions/runs/38133836343.
+
+### Releases ship the executable only
+
+The `.tar.gz` archives added in the v0.1.1 record are not wanted, so a release now
+carries the raw binaries and `SHA256SUMS` and nothing else. `chmod +x` is needed
+before running a download again, because a download cannot carry a file mode.
+Archives published before this change were left in place.
+
+pychat: `v0.2.1` published with four assets by
+https://github.com/cainiaocome/py/actions/runs/38135341623. gochat: `go-v0.2.1` was
+published with the archives still attached, because the commit that claimed to
+remove them changed the README and, through a mistake in the edit, not the
+workflow file; `go-v0.2.2` is the first release without them
+(https://github.com/cainiaocome/py/actions/runs/38135654390, Go CI
+https://github.com/cainiaocome/py/actions/runs/38135617368). Both downloaded
+binaries match `SHA256SUMS`, report `pychat 0.2.1` and `gochat 0.2.2`, and the six
+PTY harnesses pass against the released gochat.
