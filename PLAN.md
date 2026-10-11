@@ -360,3 +360,19 @@ acceptance harnesses against the extracted binary. The `go-v0.1.14` runs are
 https://github.com/cainiaocome/py/actions/runs/38132558855 (Go) and
 https://github.com/cainiaocome/py/actions/runs/38132618142 (release); the archive
 extracts as `-rwxr-xr-x` and `--version` prints `gochat 0.1.14`.
+
+### Release titles name the tool
+
+GitHub named each release after its tag, so the page said `v0.1.2` or `gochat
+go-v0.1.15` while the thing users download is a binary. Releases are now titled
+`pychat <version>` and `gochat <version>` on both projects. The tags keep their
+namespaces (`v*` for Python, `go-v*` for Go) because Git tags are repository-wide;
+only the release title drops the prefix, so the releases page reads as two
+consistent series.
+
+Existing releases were retitled in place, so every published asset keeps its tag
+and its checksums. Python: `v0.1.0`, `v0.1.1` retitled, and `v0.1.2` published with
+the new name by https://github.com/cainiaocome/py/actions/runs/38133685125
+(image https://github.com/cainiaocome/py/actions/runs/38133685123). Go:
+`go-v0.1.0` through `go-v0.1.14` retitled, and `go-v0.1.15` published by
+https://github.com/cainiaocome/py/actions/runs/38133836343.
