@@ -74,15 +74,15 @@ func TestPendingReplaceConsumesTheNextKey(t *testing.T) {
 	model.editor.MoveHome()
 	update(model, tea.KeyMsg{Type: tea.KeyEsc})
 
-	paused := model.scrollOffset
+	paused := model.scrollOffset()
 	update(model, runeKey("r"))
 	update(model, runeKey("j"))
 
 	if got, want := model.editor.Text(), "jbc"; got != want {
 		t.Fatalf("r then j -> %q, want %q (the key must be overtyped, not interpreted)", got, want)
 	}
-	if model.scrollOffset != paused {
-		t.Fatalf("r then j scrolled the transcript: %d -> %d", paused, model.scrollOffset)
+	if model.scrollOffset() != paused {
+		t.Fatalf("r then j scrolled the transcript: %d -> %d", paused, model.scrollOffset())
 	}
 }
 
@@ -98,27 +98,27 @@ func TestCtrlUIsContextSensitive(t *testing.T) {
 	if got := model.editor.Text(); got != "" {
 		t.Fatalf("ctrl+u with text -> %q, want empty", got)
 	}
-	if model.scrollOffset != model.maxScrollOffset(model.viewportHeight())-5 {
+	if model.scrollOffset() != model.maxScrollOffset(model.viewportHeight())-5 {
 		t.Fatal("ctrl+u deleted text and also scrolled")
 	}
 
 	// Insert mode with an empty buffer scrolls instead.
-	before := model.scrollOffset
+	before := model.scrollOffset()
 	update(model, tea.KeyMsg{Type: tea.KeyCtrlU})
-	if model.scrollOffset != before-model.halfPageLines() {
+	if model.scrollOffset() != before-model.halfPageLines() {
 		t.Fatalf("ctrl+u on an empty buffer scrolled to %d, want %d",
-			model.scrollOffset, before-model.halfPageLines())
+			model.scrollOffset(), before-model.halfPageLines())
 	}
 
 	// Normal mode always scrolls, never edits.
 	update(model, runeKey("z"))
 	update(model, tea.KeyMsg{Type: tea.KeyEsc})
-	before = model.scrollOffset
+	before = model.scrollOffset()
 	update(model, tea.KeyMsg{Type: tea.KeyCtrlU})
 	if got := model.editor.Text(); got != "z" {
 		t.Fatalf("normal-mode ctrl+u edited the buffer: %q", got)
 	}
-	if model.scrollOffset == before {
+	if model.scrollOffset() == before {
 		t.Fatal("normal-mode ctrl+u should scroll")
 	}
 }

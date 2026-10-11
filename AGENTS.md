@@ -61,6 +61,12 @@ following when touching the code.
 - **A user can always type.** Typing, completing and keeping a draft must work
   while a response streams. Only a modal overlay (the model picker) takes input
   away.
+- **Prefer the ecosystem component to hand-rolled state.** The transcript
+  window is `bubbles/viewport`, which owns the scroll position, the height and
+  the mouse wheel; the model only adds `followTail`, the one thing a viewport
+  cannot know (whether new output should pull the window down with it).
+  `syncViewport` mirrors the model into it once per message from `Update`,
+  which is also what keeps `View` free of bookkeeping.
 - **Channels, not callbacks-into-the-UI.** The agent loop runs in a goroutine
   and publishes `streamEvent`s on a channel; the model consumes them in
   `Update`. Never touch the model or the terminal from a producer goroutine.

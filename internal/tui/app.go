@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/cainiaocome/py/internal/command"
@@ -87,8 +88,16 @@ type Model struct {
 	overlay overlay
 	status  string
 
-	followTail   bool
-	scrollOffset int
+	// followTail records the one thing the viewport cannot know: whether new
+	// output should pull the window down with it, rather than the window merely
+	// happening to sit at the bottom right now.
+	followTail bool
+
+	// viewport owns the transcript window: its position, its height and the
+	// mouse wheel. syncViewport mirrors the model into it.
+	viewport   viewport.Model
+	viewSynced uint64
+	viewWidth  int
 
 	// transcript is a memoised render of entries. It is keyed by the revision
 	// below and the width it was rendered at, so nothing can go stale by
@@ -131,10 +140,13 @@ func New(c Session) *Model {
 		followTail:      true,
 		completionIndex: -1,
 		cursorAnchor:    NewCursorAnchor(),
+		viewport:        viewport.New(0, 0),
 	}
 	m.appendText("AI Chat · Ollama Cloud · Model: " + c.ModelName())
 	m.appendText("Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · " + command.Hint())
 	m.appendText("Web tools: disabled · " + command.EnableWeb)
+	m.viewport.MouseWheelEnabled = true
+	m.syncViewport()
 	return m
 }
 
@@ -147,22 +159,25 @@ func (m *Model) Init() tea.Cmd { return nil }
 
 // Update implements tea.Model.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch message := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = message.Width
 		m.height = message.Height
 		m.touch()
-		return m, nil
 	case tea.MouseMsg:
-		return m, m.handleMouse(message)
+		cmd = m.handleMouse(message)
 	case streamEvent:
-		return m, m.handleStream(message)
+		cmd = m.handleStream(message)
 	case modelsEvent:
-		return m, m.handleModels(message)
+		cmd = m.handleModels(message)
 	case tea.KeyMsg:
-		return m, m.handleKey(message)
+		cmd = m.handleKey(message)
 	}
-	return m, nil
+	// The viewport mirrors the model, so it is brought up to date in one place,
+	// once per message. View itself stays free of bookkeeping.
+	m.syncViewport()
+	return m, cmd
 }
 
 func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
@@ -171,9 +186,9 @@ func (m *Model) handleMouse(msg tea.MouseMsg) tea.Cmd {
 	}
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
-		m.scrollBack(3)
+		m.scrollBack(m.viewport.MouseWheelDelta)
 	case tea.MouseButtonWheelDown:
-		m.scrollForward(3)
+		m.scrollForward(m.viewport.MouseWheelDelta)
 	}
 	return nil
 }
@@ -272,7 +287,6 @@ func (m *Model) submit() tea.Cmd {
 	m.refreshCompletions()
 	m.gPending = false
 	m.followTail = true
-	m.scrollOffset = 0
 	m.status = "Submitted"
 
 	if m.overlay == overlayModelPicker {
@@ -409,7 +423,6 @@ func (m *Model) clearTranscript() {
 	m.lastEcho = nil
 	m.gPending = false
 	m.followTail = true
-	m.scrollOffset = 0
 	m.touch()
 }
 
@@ -438,7 +451,7 @@ func (m *Model) previousMessage() {
 		m.notifyNoMessage()
 		return
 	}
-	current := m.currentTopOffset()
+	current := m.scrollOffset()
 	target := anchors[0].offset
 	for _, item := range anchors {
 		if item.offset < current {
@@ -454,7 +467,7 @@ func (m *Model) nextMessage() {
 		m.notifyNoMessage()
 		return
 	}
-	current := m.currentTopOffset()
+	current := m.scrollOffset()
 	for _, item := range anchors {
 		if item.offset > current {
 			m.pinOffset(item.offset)
@@ -484,60 +497,75 @@ func (m *Model) notifyNoMessage() {
 	m.appendStyled("No previous message to scroll to.", styleDim)
 }
 
+// syncViewport gives the viewport the window size, the transcript and, while
+// the user is following, the bottom of it. It is idempotent and cheap, so it can
+// be called whenever the window has to be accurate.
+func (m *Model) syncViewport() {
+	width := m.effectiveWidth()
+	m.viewport.Width = width
+	m.viewport.Height = m.viewportHeight()
+	if m.viewSynced != m.revision || m.viewWidth != width {
+		m.viewport.SetContent(strings.Join(m.transcriptLines(width), "\n"))
+		m.viewSynced = m.revision
+		m.viewWidth = width
+	}
+	if m.followTail {
+		m.viewport.GotoBottom()
+	}
+}
+
+// scrollOffset is the line at the top of the window. While following it is the
+// furthest the transcript can scroll, which is where the viewport sits.
+func (m *Model) scrollOffset() int {
+	m.syncViewport()
+	return m.viewport.YOffset
+}
+
 func (m *Model) pinOffset(offset int) {
+	m.syncViewport()
 	if offset < m.maxScrollOffset(m.viewportHeight()) {
 		m.followTail = false
-		m.scrollOffset = offset
+		m.viewport.SetYOffset(offset)
 		m.status = "At message · gg/p back · n forward · G end"
-	} else {
-		m.followTail = true
-		m.scrollOffset = 0
-		m.status = "Following transcript"
+		return
 	}
+	m.followTailNow()
 }
 
 func (m *Model) followTailNow() {
 	m.followTail = true
-	m.scrollOffset = 0
+	m.syncViewport()
+	m.viewport.GotoBottom()
 	m.status = "Following transcript"
 }
 
 func (m *Model) scrollBack(amount int) {
-	height := m.viewportHeight()
-	maxOffset := m.maxScrollOffset(height)
-	current := maxOffset
-	if !m.followTail {
-		current = min(m.scrollOffset, maxOffset)
+	if amount <= 0 {
+		return
 	}
+	m.syncViewport()
 	m.followTail = false
-	m.scrollOffset = max(0, current-amount)
+	m.viewport.SetYOffset(max(0, m.viewport.YOffset-amount))
 	m.status = "Transcript paused · End follows new output"
 }
 
 func (m *Model) scrollForward(amount int) {
-	if m.followTail {
+	if amount <= 0 || m.followTail {
 		return
 	}
-	height := m.viewportHeight()
-	maxOffset := m.maxScrollOffset(height)
-	newOffset := min(maxOffset, m.scrollOffset+amount)
-	if newOffset >= maxOffset {
+	m.syncViewport()
+	m.viewport.SetYOffset(m.viewport.YOffset + amount)
+	if m.viewport.AtBottom() {
 		m.followTailNow()
 		return
 	}
-	m.scrollOffset = newOffset
 	m.status = "Transcript paused · End follows new output"
 }
 
-func (m *Model) currentTopOffset() int {
-	if m.followTail {
-		return m.maxScrollOffset(m.viewportHeight())
-	}
-	return m.scrollOffset
-}
-
+// maxScrollOffset is the furthest the transcript window can move.
 func (m *Model) maxScrollOffset(height int) int {
-	return max(0, len(m.transcriptLines(m.effectiveWidth()))-height)
+	m.syncViewport()
+	return max(0, m.viewport.TotalLineCount()-height)
 }
 
 func (m *Model) pageLines() int { return max(1, m.viewportHeight()-2) }
@@ -643,43 +671,25 @@ func (m *Model) transcriptLines(width int) []string {
 	return lines
 }
 
-func (m *Model) topOffset(total, viewport int) int {
-	if m.followTail {
-		return max(0, total-viewport)
-	}
-	return min(max(0, m.scrollOffset), max(0, total-viewport))
-}
-
-// View implements tea.Model.
+// View implements tea.Model. It reads the viewport that Update keeps in sync
+// with the model, so it does not have to reason about scroll positions.
 func (m *Model) View() string {
 	width := m.effectiveWidth()
-	height := m.height
-	if height < 1 {
-		height = 24
-	}
-	lines := m.transcriptLines(width)
 	editorHeight := m.editorHeight(width)
-	viewport := max(1, height-(1+editorHeight+1))
-	top := m.topOffset(len(lines), viewport)
-	visible := make([]string, viewport)
-	for i := 0; i < viewport; i++ {
-		if index := top + i; index >= 0 && index < len(lines) {
-			visible[i] = lines[index]
-		}
-	}
+	visible := strings.Split(m.viewport.View(), "\n")
+	window := len(visible)
+	// The completion menu is drawn over the bottom of the transcript window,
+	// right above the input line.
 	if menu := m.menuLines(width); len(menu) > 0 {
-		start := viewport - len(menu)
-		if start < 0 {
-			start = 0
-		}
+		start := max(0, window-len(menu))
 		for i, line := range menu {
-			if start+i < viewport {
+			if start+i < window {
 				visible[start+i] = line
 			}
 		}
 	}
 	editor, cursorRow, cursorCell := m.renderEditor(width, editorHeight)
-	parts := make([]string, 0, len(visible)+len(editor)+2)
+	parts := make([]string, 0, window+len(editor)+2)
 	parts = append(parts, visible...)
 	parts = append(parts, sgr("90", strings.Repeat("─", width)))
 	parts = append(parts, editor...)

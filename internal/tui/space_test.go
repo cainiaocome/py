@@ -42,13 +42,13 @@ func TestSpaceStillPagesTheTranscriptInNormalMode(t *testing.T) {
 	update(model, tea.KeyMsg{Type: tea.KeyEsc})
 	model.scrollBack(model.pageLines() * 2)
 
-	before := model.scrollOffset
+	before := model.scrollOffset()
 	update(model, spaceKey())
 	if model.editor.Text() != "" {
 		t.Fatalf("normal-mode space edited the buffer: %q", model.editor.Text())
 	}
-	if model.scrollOffset != before+model.pageLines() {
-		t.Fatalf("normal-mode space scrolled to %d, want %d", model.scrollOffset, before+model.pageLines())
+	if model.scrollOffset() != before+model.pageLines() {
+		t.Fatalf("normal-mode space scrolled to %d, want %d", model.scrollOffset(), before+model.pageLines())
 	}
 }
 

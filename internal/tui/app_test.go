@@ -177,24 +177,24 @@ func TestScrollKeys(t *testing.T) {
 		model.appendText("line")
 	}
 	model.scrollBack(10)
-	start := model.scrollOffset
+	start := model.scrollOffset()
 	if model.followTail {
 		t.Fatal("scrollBack should pause following")
 	}
 
 	model.editor.SetMode(ModeNormal)
 	update(model, runeKey("j"))
-	if model.scrollOffset != start+1 {
-		t.Fatalf("j -> %d, want %d", model.scrollOffset, start+1)
+	if model.scrollOffset() != start+1 {
+		t.Fatalf("j -> %d, want %d", model.scrollOffset(), start+1)
 	}
 	update(model, runeKey("k"))
-	if model.scrollOffset != start {
-		t.Fatalf("k -> %d, want %d", model.scrollOffset, start)
+	if model.scrollOffset() != start {
+		t.Fatalf("k -> %d, want %d", model.scrollOffset(), start)
 	}
 	half := model.halfPageLines()
 	update(model, runeKey("d"))
-	if model.scrollOffset != start+half {
-		t.Fatalf("d -> %d, want %d", model.scrollOffset, start+half)
+	if model.scrollOffset() != start+half {
+		t.Fatalf("d -> %d, want %d", model.scrollOffset(), start+half)
 	}
 }
 
@@ -206,11 +206,11 @@ func TestCtrlDScrollsWhenPaused(t *testing.T) {
 		model.appendText("line")
 	}
 	model.scrollBack(10)
-	start := model.scrollOffset
+	start := model.scrollOffset()
 
 	update(model, tea.KeyMsg{Type: tea.KeyCtrlD})
-	if model.scrollOffset <= start {
-		t.Fatalf("Ctrl+D should scroll down: %d -> %d", start, model.scrollOffset)
+	if model.scrollOffset() <= start {
+		t.Fatalf("Ctrl+D should scroll down: %d -> %d", start, model.scrollOffset())
 	}
 }
 
@@ -245,17 +245,17 @@ func TestMessageNavigationPins(t *testing.T) {
 	if model.followTail {
 		t.Fatal("last message should pin above the tail")
 	}
-	if model.scrollOffset != anchors[3].offset {
-		t.Fatalf("pinned = %d, want %d", model.scrollOffset, anchors[3].offset)
+	if model.scrollOffset() != anchors[3].offset {
+		t.Fatalf("pinned = %d, want %d", model.scrollOffset(), anchors[3].offset)
 	}
 
 	model.previousMessage()
-	if model.scrollOffset != anchors[2].offset {
-		t.Fatalf("previous = %d, want %d", model.scrollOffset, anchors[2].offset)
+	if model.scrollOffset() != anchors[2].offset {
+		t.Fatalf("previous = %d, want %d", model.scrollOffset(), anchors[2].offset)
 	}
 	model.nextMessage()
-	if model.scrollOffset != anchors[3].offset {
-		t.Fatalf("next = %d, want %d", model.scrollOffset, anchors[3].offset)
+	if model.scrollOffset() != anchors[3].offset {
+		t.Fatalf("next = %d, want %d", model.scrollOffset(), anchors[3].offset)
 	}
 }
 
@@ -295,21 +295,21 @@ func TestCtrlUEmptyScrollsNonEmptyClears(t *testing.T) {
 		model.appendText("line")
 	}
 	model.scrollBack(10)
-	start := model.scrollOffset
+	start := model.scrollOffset()
 
 	// Empty draft: Ctrl+U scrolls half a page up.
 	update(model, tea.KeyMsg{Type: tea.KeyCtrlU})
-	if model.scrollOffset >= start {
-		t.Fatalf("Ctrl+U on empty should scroll up: %d -> %d", start, model.scrollOffset)
+	if model.scrollOffset() >= start {
+		t.Fatalf("Ctrl+U on empty should scroll up: %d -> %d", start, model.scrollOffset())
 	}
 	// Non-empty draft: Ctrl+U clears to the line start instead.
 	model.editor.SetText("abc")
-	before := model.scrollOffset
+	before := model.scrollOffset()
 	update(model, tea.KeyMsg{Type: tea.KeyCtrlU})
 	if model.editor.Text() != "" {
 		t.Fatalf("Ctrl+U should clear the line, got %q", model.editor.Text())
 	}
-	if model.scrollOffset != before {
+	if model.scrollOffset() != before {
 		t.Fatal("Ctrl+U with text should not scroll")
 	}
 }
@@ -322,9 +322,9 @@ func TestMouseWheelScrolls(t *testing.T) {
 		model.appendText("line")
 	}
 	model.scrollBack(10)
-	start := model.scrollOffset
+	start := model.scrollOffset()
 	update(model, tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelUp})
-	if model.scrollOffset != start-3 {
-		t.Fatalf("wheel up -> %d, want %d", model.scrollOffset, start-3)
+	if model.scrollOffset() != start-3 {
+		t.Fatalf("wheel up -> %d, want %d", model.scrollOffset(), start-3)
 	}
 }

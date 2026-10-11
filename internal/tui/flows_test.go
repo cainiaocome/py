@@ -60,14 +60,14 @@ func TestCtrlBAndCtrlFPageInInsertAndNormalMode(t *testing.T) {
 
 	for _, mode := range []Mode{ModeInsert, ModeNormal} {
 		model.editor.SetMode(mode)
-		start := model.scrollOffset
+		start := model.scrollOffset()
 		update(model, tea.KeyMsg{Type: tea.KeyCtrlB})
-		if model.scrollOffset != start-model.pageLines() {
-			t.Fatalf("%v: Ctrl+B -> %d, want %d", mode, model.scrollOffset, start-model.pageLines())
+		if model.scrollOffset() != start-model.pageLines() {
+			t.Fatalf("%v: Ctrl+B -> %d, want %d", mode, model.scrollOffset(), start-model.pageLines())
 		}
 		update(model, tea.KeyMsg{Type: tea.KeyCtrlF})
-		if model.scrollOffset != start {
-			t.Fatalf("%v: Ctrl+F -> %d, want %d", mode, model.scrollOffset, start)
+		if model.scrollOffset() != start {
+			t.Fatalf("%v: Ctrl+F -> %d, want %d", mode, model.scrollOffset(), start)
 		}
 	}
 }
@@ -80,12 +80,12 @@ func TestCtrlDHalfPageDownInInsertAndNormalMode(t *testing.T) {
 
 	for _, mode := range []Mode{ModeInsert, ModeNormal} {
 		model.editor.SetMode(mode)
-		start := model.scrollOffset
+		start := model.scrollOffset()
 		if isQuit(update(model, tea.KeyMsg{Type: tea.KeyCtrlD})) {
 			t.Fatal("Ctrl+D must never exit")
 		}
-		if model.scrollOffset != start+model.halfPageLines() {
-			t.Fatalf("%v: Ctrl+D -> %d, want %d", mode, model.scrollOffset, start+model.halfPageLines())
+		if model.scrollOffset() != start+model.halfPageLines() {
+			t.Fatalf("%v: Ctrl+D -> %d, want %d", mode, model.scrollOffset(), start+model.halfPageLines())
 		}
 	}
 }
@@ -496,8 +496,8 @@ func TestStartCommandPinsTheLastQuestion(t *testing.T) {
 	if model.followTail {
 		t.Fatal("/start should pin the last question above the tail")
 	}
-	if model.scrollOffset != anchors[len(anchors)-1].offset {
-		t.Fatalf("pinned = %d, want %d", model.scrollOffset, anchors[len(anchors)-1].offset)
+	if model.scrollOffset() != anchors[len(anchors)-1].offset {
+		t.Fatalf("pinned = %d, want %d", model.scrollOffset(), anchors[len(anchors)-1].offset)
 	}
 }
 
@@ -539,15 +539,15 @@ func TestMouseWheelDownAndIgnoredActions(t *testing.T) {
 	model.height = 10
 	fillTranscript(model, 60)
 	model.scrollBack(30)
-	start := model.scrollOffset
+	start := model.scrollOffset()
 
 	update(model, tea.MouseMsg{Action: tea.MouseActionRelease, Button: tea.MouseButtonWheelDown})
-	if model.scrollOffset != start {
+	if model.scrollOffset() != start {
 		t.Fatal("non-press mouse actions should be ignored")
 	}
 	update(model, tea.MouseMsg{Action: tea.MouseActionPress, Button: tea.MouseButtonWheelDown})
-	if model.scrollOffset != start+3 {
-		t.Fatalf("wheel down -> %d, want %d", model.scrollOffset, start+3)
+	if model.scrollOffset() != start+3 {
+		t.Fatalf("wheel down -> %d, want %d", model.scrollOffset(), start+3)
 	}
 }
 
@@ -558,8 +558,10 @@ func TestFollowTailNowResumesAndPinningPastTheEnd(t *testing.T) {
 	model.scrollBack(30)
 
 	model.followTailNow()
-	if !model.followTail || model.scrollOffset != 0 {
-		t.Fatalf("followTailNow -> follow=%v offset=%d", model.followTail, model.scrollOffset)
+	// Following means the window sits as far down as it can go.
+	if !model.followTail || model.scrollOffset() != model.maxScrollOffset(model.viewportHeight()) {
+		t.Fatalf("followTailNow -> follow=%v offset=%d, want %d",
+			model.followTail, model.scrollOffset(), model.maxScrollOffset(model.viewportHeight()))
 	}
 	if !strings.Contains(model.status, "Following") {
 		t.Fatalf("status = %q", model.status)
@@ -583,8 +585,12 @@ func TestEffectiveWidthAndViewportDefaults(t *testing.T) {
 	if got := model.viewportHeight(); got != 19 {
 		t.Fatalf("viewportHeight = %d, want 19", got)
 	}
-	if got := model.topOffset(10, 0); got != 10 {
-		t.Fatalf("topOffset with an empty viewport = %d, want 10", got)
+	// A fresh model is empty apart from its banner, so the window cannot move.
+	if got := model.maxScrollOffset(model.viewportHeight()); got != 0 {
+		t.Fatalf("maxScrollOffset = %d, want 0", got)
+	}
+	if got := model.scrollOffset(); got != 0 {
+		t.Fatalf("scrollOffset = %d, want 0", got)
 	}
 }
 
@@ -611,7 +617,7 @@ func TestManualScrollIsPreservedWhileAResponseCompletes(t *testing.T) {
 	if model.followTail {
 		t.Fatal("scrolling should pause following")
 	}
-	paused := model.scrollOffset
+	paused := model.scrollOffset()
 
 	close(release)
 	pump(t, model, cmd)
@@ -619,8 +625,8 @@ func TestManualScrollIsPreservedWhileAResponseCompletes(t *testing.T) {
 	if model.followTail {
 		t.Fatal("completing a response should not resume following while paused")
 	}
-	if model.scrollOffset != paused {
-		t.Fatalf("the paused offset changed: %d -> %d", paused, model.scrollOffset)
+	if model.scrollOffset() != paused {
+		t.Fatalf("the paused offset changed: %d -> %d", paused, model.scrollOffset())
 	}
 	if !strings.Contains(strings.Join(entryTexts(model), "\n"), "NEW_TOKENS") {
 		t.Fatalf("new tokens were dropped: %v", entryTexts(model))
