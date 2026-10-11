@@ -55,6 +55,11 @@ as its own project: do not merge it into `main`, and keep the Python project on
   (`ESC [ <rows> ; H`), never the alt-screen enter/exit or cursor show/hide
   sequences -- otherwise the cursor would be hidden and displaced in the user's
   shell after exit. Keep that distinction when changing the renderer.
+- `CursorWriter` must keep satisfying `io.ReadWriteCloser` + `Fd() uintptr`
+  (`x/term.File`). Bubble Tea only learns the window size by asserting its
+  output against that interface and calling `GetSize` on the descriptor, so a
+  wrapper that hides it makes the UI render a fixed 80x24 window instead of
+  filling the terminal. Never wrap stdout in something that only writes.
 - Bubble Tea reports a lone space as `KeySpace`, not `KeyRunes`. Any code that
   inserts typed text must handle both, or spaces are silently dropped.
 

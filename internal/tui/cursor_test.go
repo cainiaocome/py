@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bytes"
+	"io"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -157,5 +158,47 @@ func TestIsFrameTail(t *testing.T) {
 		if isFrameTail([]byte(other)) {
 			t.Fatalf("%q should not be recognised as a frame", other)
 		}
+	}
+}
+
+// terminalFile is the interface Bubble Tea asserts its output against to find
+// the window size (x/term's File). CursorWriter must satisfy it, or the UI
+// falls back to a fixed 80x24 window.
+type terminalFile interface {
+	io.ReadWriteCloser
+	Fd() uintptr
+}
+
+type fakeTerminal struct {
+	bytes.Buffer
+	fd     uintptr
+	closed bool
+}
+
+func (f *fakeTerminal) Fd() uintptr { return f.fd }
+func (f *fakeTerminal) Close() error {
+	f.closed = true
+	return nil
+}
+
+func TestCursorWriterStillLooksLikeATerminal(t *testing.T) {
+	file := &fakeTerminal{fd: 42}
+	writer := NewCursorWriter(file, NewCursorAnchor())
+
+	if _, ok := any(writer).(terminalFile); !ok {
+		t.Fatal("CursorWriter must satisfy io.ReadWriteCloser + Fd, or Bubble Tea cannot discover the window size")
+	}
+	if got := writer.Fd(); got != 42 {
+		t.Fatalf("Fd = %d, want the wrapped descriptor 42", got)
+	}
+	if err := writer.Close(); err != nil || !file.closed {
+		t.Fatal("Close should be forwarded to the terminal")
+	}
+
+	if writer := NewCursorWriter(io.Discard, NewCursorAnchor()); writer.Fd() != ^uintptr(0) {
+		t.Fatal("a non-terminal writer should report an invalid descriptor")
+	}
+	if _, err := io.Copy(io.Discard, NewCursorWriter(io.Discard, NewCursorAnchor())); err != nil {
+		t.Fatalf("reading from a non-terminal writer should just report EOF: %v", err)
 	}
 }

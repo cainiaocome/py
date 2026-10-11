@@ -50,6 +50,12 @@ func (a *CursorAnchor) position() (int, int, bool) {
 // a cursor move to the end of every rendered frame so the hardware cursor
 // follows the editor caret. Appending within the same write keeps the frame and
 // the move atomic, so the terminal can never observe a stale cursor position.
+//
+// It must keep looking like the terminal it wraps. Bubble Tea discovers the
+// window size by asserting its output against x/term's File interface
+// (io.ReadWriteCloser plus Fd) and calling GetSize on the descriptor; a wrapper
+// that only implements Write makes that assertion fail, and the program then
+// silently renders an 80x24 window instead of filling the terminal.
 type CursorWriter struct {
 	out    io.Writer
 	anchor *CursorAnchor
@@ -58,6 +64,31 @@ type CursorWriter struct {
 // NewCursorWriter wraps out so that rendered frames carry a cursor move.
 func NewCursorWriter(out io.Writer, anchor *CursorAnchor) *CursorWriter {
 	return &CursorWriter{out: out, anchor: anchor}
+}
+
+// Fd reports the wrapped terminal's file descriptor, or an invalid descriptor
+// when out is not a terminal.
+func (w *CursorWriter) Fd() uintptr {
+	if file, ok := w.out.(interface{ Fd() uintptr }); ok {
+		return file.Fd()
+	}
+	return ^uintptr(0)
+}
+
+// Read implements io.Reader by delegating to the wrapped terminal.
+func (w *CursorWriter) Read(p []byte) (int, error) {
+	if reader, ok := w.out.(io.Reader); ok {
+		return reader.Read(p)
+	}
+	return 0, io.EOF
+}
+
+// Close implements io.Closer by delegating to the wrapped terminal.
+func (w *CursorWriter) Close() error {
+	if closer, ok := w.out.(io.Closer); ok {
+		return closer.Close()
+	}
+	return nil
 }
 
 // Write implements io.Writer.
