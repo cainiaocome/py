@@ -78,8 +78,8 @@ tags are repository-wide and `v*` belongs to the Python project, the Go
 releases use their own `go-v*` namespace. Cut one with:
 
 ```sh
-git tag -a go-v0.1.0 -m "gochat v0.1.0"
-git push origin go-v0.1.0
+git tag -a go-v0.1.1 -m "gochat v0.1.1"
+git push origin go-v0.1.1
 ```
 
 The tag runs `.github/workflows/release.yml`, which builds each target natively,
