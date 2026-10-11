@@ -52,26 +52,16 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
           CGO_ENABLED: '0'
         run: |
-          mkdir -p release package
+          mkdir -p release
           go build -trimpath \
             -ldflags "-s -w -X main.Version=${{ steps.version.outputs.version }}" \
             -o "release/${{ matrix.artifact }}" ./cmd/gochat
-          # A download cannot carry a file mode, so the raw asset needs chmod +x.
-          # The archive records the mode, which is why it is the friendlier one.
-          cp "release/${{ matrix.artifact }}" package/gochat
-          chmod 755 package/gochat
-          tar -czf "release/${{ matrix.artifact }}.tar.gz" -C package gochat
+          chmod 755 "release/${{ matrix.artifact }}"
           ls -l release
       - name: Smoke test the binary
         run: |
           "release/${{ matrix.artifact }}" --version
           "release/${{ matrix.artifact }}" --version | grep -q "gochat ${{ steps.version.outputs.version }}"
-      - name: Smoke test the archive
-        run: |
-          # The point of the archive is that it extracts executable, so check that.
-          tar xzf "release/${{ matrix.artifact }}.tar.gz" -C package
-          test -x package/gochat
-          package/gochat --version | grep -q "gochat ${{ steps.version.outputs.version }}"
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}
