@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/cainiaocome/py/internal/command"
 )
 
 // streamingModel returns a model with a response in flight, plus the command
@@ -37,15 +39,15 @@ func TestCommandPaletteShowsWhileTheModelIsResponding(t *testing.T) {
 		t.Fatal("typing / during a response should offer commands")
 	}
 	view := model.View()
-	for _, command := range Commands {
-		if !strings.Contains(view, command) {
-			t.Fatalf("the palette should list %s while responding:\n%s", command, view)
+	for _, name := range command.Names() {
+		if !strings.Contains(view, name) {
+			t.Fatalf("the palette should list %s while responding:\n%s", name, view)
 		}
 	}
 
 	// The user can keep editing and cycling the palette without interrupting.
 	update(model, tea.KeyMsg{Type: tea.KeyTab})
-	if got := model.editor.Text(); got != Commands[0] {
+	if got := model.editor.Text(); got != command.Names()[0] {
 		t.Fatalf("tab should complete during a response: %q", got)
 	}
 	if !model.responding() {

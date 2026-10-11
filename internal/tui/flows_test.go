@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/cainiaocome/py/internal/command"
 )
 
 func TestEnterSendsAndAltEnterInsertsNewline(t *testing.T) {
@@ -302,12 +304,12 @@ func TestEnableWebIsIdempotentAndPersists(t *testing.T) {
 	fake := newFakeChat("model-a")
 	model := newFakeModel(t, fake)
 
-	update(model, runeKey(EnableWebCommand))
+	update(model, runeKey(command.EnableWeb))
 	update(model, tea.KeyMsg{Type: tea.KeyEnter})
 	if !fake.WebEnabled() {
 		t.Fatal("web should be enabled")
 	}
-	update(model, runeKey(EnableWebCommand))
+	update(model, runeKey(command.EnableWeb))
 	update(model, tea.KeyMsg{Type: tea.KeyEnter})
 	if !strings.Contains(strings.Join(entryTexts(model), "\n"), "already enabled") {
 		t.Fatalf("missing idempotent notice: %v", entryTexts(model))

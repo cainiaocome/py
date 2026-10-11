@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/cainiaocome/py/internal/command"
 )
 
 func normalEditor(t *testing.T, text string) *Model {
@@ -133,9 +135,9 @@ func TestCommandPaletteRendersCommandsAndDescriptions(t *testing.T) {
 	model.refreshCompletions()
 
 	view := model.View()
-	for _, command := range Commands {
-		if !strings.Contains(view, command) {
-			t.Fatalf("palette is missing %s:\n%s", command, view)
+	for _, name := range command.Names() {
+		if !strings.Contains(view, name) {
+			t.Fatalf("palette is missing %s:\n%s", name, view)
 		}
 	}
 	if !strings.Contains(view, "Show or switch the model") {

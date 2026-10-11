@@ -13,6 +13,7 @@ import (
 	"os/signal"
 	"strings"
 
+	"github.com/cainiaocome/py/internal/command"
 	"github.com/cainiaocome/py/internal/tui"
 )
 
@@ -24,8 +25,8 @@ type streamResult struct {
 // Run reads prompts from in and writes replies to out until EOF or /exit.
 func Run(c tui.Session, in io.Reader, out io.Writer) error {
 	fmt.Fprintln(out, "AI Chat · Ollama Cloud · Model: "+c.ModelName())
-	fmt.Fprintln(out, "Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · /start · /clear · /exit · /model")
-	fmt.Fprintln(out, "Web tools: disabled · "+tui.EnableWebCommand)
+	fmt.Fprintln(out, "Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · "+command.Hint())
+	fmt.Fprintln(out, "Web tools: disabled · "+command.EnableWeb)
 
 	reader := bufio.NewReader(in)
 	signals := make(chan os.Signal, 1)
@@ -43,30 +44,19 @@ func Run(c tui.Session, in io.Reader, out io.Writer) error {
 			continue
 		}
 
+		spec, argument, known := command.Parse(value)
 		switch {
-		case value == "/exit":
-			fmt.Fprintln(out, "Goodbye.")
-			return nil
-		case value == tui.EnableWebCommand:
-			if c.EnableWeb() {
-				fmt.Fprintln(out, "Web search and web fetch enabled for this session.")
-			} else {
-				fmt.Fprintln(out, "Web search and web fetch are already enabled.")
-			}
-		case value == "/clear":
-			c.Clear()
-			fmt.Fprintln(out, "Conversation cleared.")
-		case value == "/start":
-			fmt.Fprintln(out, "/start works in the full-screen interface.")
-		case firstToken(value) == "/model":
-			argument := strings.TrimSpace(strings.TrimPrefix(value, "/model"))
-			if err := selectModel(c, reader, out, argument); err != nil {
+		case !known && command.IsCommand(value):
+			fmt.Fprintln(out, command.UnknownNotice())
+		case !known:
+			runResponse(c, out, signals, value)
+		default:
+			if err := runCommand(c, spec, argument, reader, out); err != nil {
 				fmt.Fprintln(out, "Could not select a model. Try /model <name> or check your connection and key.")
 			}
-		case strings.HasPrefix(value, "/"):
-			fmt.Fprintln(out, "Unknown command. Available: "+strings.Join(tui.Commands, ", "))
-		default:
-			runResponse(c, out, signals, value)
+			if spec.Name == "/exit" {
+				return nil
+			}
 		}
 
 		if readErr != nil {
@@ -153,11 +143,29 @@ func selectModel(c tui.Session, reader *bufio.Reader, out io.Writer, argument st
 	return nil
 }
 
-func firstToken(value string) string {
-	if index := strings.IndexAny(value, " \t"); index >= 0 {
-		return value[:index]
+// runCommand executes a parsed command. The full-screen UI has its own
+// implementations because it owns a transcript to scroll and entries to append;
+// what the two share is the command table and this parsing, which is the part
+// that used to drift.
+func runCommand(c tui.Session, spec command.Spec, argument string, reader *bufio.Reader, out io.Writer) error {
+	switch spec.Name {
+	case "/exit":
+		fmt.Fprintln(out, "Goodbye.")
+	case command.EnableWeb:
+		if c.EnableWeb() {
+			fmt.Fprintln(out, "Web search and web fetch enabled for this session.")
+		} else {
+			fmt.Fprintln(out, "Web search and web fetch are already enabled.")
+		}
+	case "/clear":
+		c.Clear()
+		fmt.Fprintln(out, "Conversation cleared.")
+	case "/start":
+		fmt.Fprintln(out, "/start works in the full-screen interface.")
+	case "/model":
+		return selectModel(c, reader, out, argument)
 	}
-	return value
+	return nil
 }
 
 func isDecimal(s string) bool {

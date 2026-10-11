@@ -6,6 +6,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/cainiaocome/py/internal/command"
+
 	"github.com/cainiaocome/py/internal/chat"
 )
 
@@ -120,7 +122,7 @@ func TestCommandCompletionCycles(t *testing.T) {
 	model := newTestModel(t)
 	model.editor.SetText("/")
 	model.refreshCompletions()
-	if len(model.completions) != len(Commands) {
+	if len(model.completions) != len(command.Names()) {
 		t.Fatalf("completions = %v", model.completions)
 	}
 
@@ -129,7 +131,7 @@ func TestCommandCompletionCycles(t *testing.T) {
 		t.Fatalf("after down = %q", model.editor.Text())
 	}
 	model.cycleCompletions(-1)
-	if model.editor.Text() != Commands[len(Commands)-1] {
+	if model.editor.Text() != command.Names()[len(command.Names())-1] {
 		t.Fatalf("after up = %q", model.editor.Text())
 	}
 

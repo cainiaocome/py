@@ -5,6 +5,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/cainiaocome/py/internal/command"
 )
 
 // fakeChat is a scriptable session for the line interface.
@@ -98,8 +100,20 @@ func TestStreamFailureNoticeAndToolActivity(t *testing.T) {
 
 func TestUnknownCommand(t *testing.T) {
 	out := runRepl(t, &fakeChat{model: "m"}, "/nope\n/exit\n")
-	if !strings.Contains(out, "Unknown command. Available: /start, /clear, /exit, /model, /enable-web-search-and-web-fetch") {
+	// Taken from the shared table rather than spelled out, so it cannot drift.
+	if !strings.Contains(out, command.UnknownNotice()) {
 		t.Fatalf("output = %s", out)
+	}
+}
+
+func TestCommandArgumentIsIgnoredWhenTheCommandTakesNone(t *testing.T) {
+	chat := &fakeChat{model: "m"}
+	out := runRepl(t, chat, "/clear now\n/exit\n")
+	if chat.cleared != 1 {
+		t.Fatalf("cleared = %d, want 1", chat.cleared)
+	}
+	if strings.Contains(out, "Unknown command") {
+		t.Fatalf("/clear now should still clear: %s", out)
 	}
 }
 

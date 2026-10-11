@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/cainiaocome/py/internal/command"
 	"github.com/cainiaocome/py/internal/textutil"
 )
 
@@ -121,11 +122,15 @@ func New(c Session) *Model {
 	}
 	m.entries = append(m.entries,
 		newTextEntry("AI Chat · Ollama Cloud · Model: "+c.ModelName()),
-		newTextEntry("Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · /start · /clear · /exit · /model"),
-		newTextEntry("Web tools: disabled · "+EnableWebCommand),
+		newTextEntry("Vim editing · Enter: send · Alt+Enter: newline · Tab: complete · "+command.Hint()),
+		newTextEntry("Web tools: disabled · "+command.EnableWeb),
 	)
 	return m
 }
+
+// commandDescriptions is the palette meta text for each command, resolved once
+// rather than on every frame.
+var commandDescriptions = command.Descriptions()
 
 // Init implements tea.Model.
 func (m *Model) Init() tea.Cmd { return nil }
@@ -266,10 +271,18 @@ func (m *Model) submit() tea.Cmd {
 	if value == "" {
 		return nil
 	}
-	switch value {
+	spec, argument, known := command.Parse(value)
+	if !known {
+		if command.IsCommand(value) {
+			m.appendStyled(command.UnknownNotice(), styleYellow)
+			return nil
+		}
+		return m.startResponse(value)
+	}
+	switch spec.Name {
 	case "/exit":
 		return tea.Quit
-	case EnableWebCommand:
+	case command.EnableWeb:
 		if m.chat.EnableWeb() {
 			m.appendStyled("Web search and web fetch enabled for this session.", styleDim)
 		} else {
@@ -282,19 +295,10 @@ func (m *Model) submit() tea.Cmd {
 	case "/start":
 		m.scrollToLastMessage()
 		return nil
+	case "/model":
+		return m.selectModel(argument)
 	}
-	first := value
-	if index := strings.IndexAny(value, " \t"); index >= 0 {
-		first = value[:index]
-	}
-	if first == "/model" {
-		return m.selectModel(strings.TrimSpace(strings.TrimPrefix(value, "/model")))
-	}
-	if strings.HasPrefix(value, "/") {
-		m.appendStyled("Unknown command. Available: "+commandNames(), styleYellow)
-		return nil
-	}
-	return m.startResponse(value)
+	return nil
 }
 
 func (m *Model) selectModel(argument string) tea.Cmd {
@@ -568,7 +572,7 @@ func (m *Model) refreshCompletions() {
 	if !strings.HasPrefix(text, "/") || strings.Contains(text, "\n") || !m.editor.CursorAtEnd() {
 		return
 	}
-	m.completions = matchCommands(text)
+	m.completions = command.Match(text)
 }
 
 func (m *Model) cycleCompletions(step int) {
@@ -728,12 +732,12 @@ func (m *Model) menuLines(width int) []string {
 	}
 	const maxMenu = 5
 	var lines []string
-	for index, command := range m.completions {
+	for index, name := range m.completions {
 		if index >= maxMenu {
 			break
 		}
-		text := " " + command
-		if description := CommandDescriptions[command]; description != "" {
+		text := " " + name
+		if description := commandDescriptions[name]; description != "" {
 			text += "  " + description
 		}
 		text = padRight(truncateRunes(text, width), width)
