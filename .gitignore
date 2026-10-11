@@ -1,0 +1,21 @@
+# Build output.
+/pychat
+/dist/
+*.test
+
+# Secrets.
+.env
+.env.*
+!.env.example
+
+# Leftovers from the Python project when this orphan branch is checked out.
+/.venv/
+/.pytest_cache/
+/.ruff_cache/
+/src/
+/tests/
+/build/
+/tmp/
+/markdown-for-ai/
+/reference-repos/
+/claude-code-review-result/

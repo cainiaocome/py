@@ -1,0 +1,8 @@
+.git
+.venv
+pychat
+dist
+build
+tmp
+markdown-for-ai
+reference-repos
